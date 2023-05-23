@@ -40,6 +40,8 @@ def get_augmentations(img):
     return horizontal_flip, vertical_horizontal_flip, imagerotate, imagerotate1, imagerotate2
 
 def get_Xy(path_to_dir: Path):
+    path_to_dir = Path(path_to_dir)
+
     #x for images 
     #y for masks
     #t for target"label"
