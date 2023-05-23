@@ -96,9 +96,9 @@ def data_pass(model, loader, loss_fn, optimizer=None, scaler=None,
         # forward
         with torch.cuda.amp.autocast():
             predictions = model(data)
-            if isinstance(predictions, list): # LayerEnsemble
+            if isinstance(predictions, dict):  # LayerEnsemble
                 loss = sum([loss_fn(pred, targets) for pred in predictions.values()]) / len(predictions)
-                predictions = predictions[-1]
+                predictions = predictions['final']
             else:
                 loss = loss_fn(predictions, targets)
     
