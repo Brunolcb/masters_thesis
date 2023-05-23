@@ -108,8 +108,8 @@ def data_pass(model, loader, loss_fn, optimizer=None, scaler=None,
         # metrics
         train_preds = torch.sigmoid(predictions)
         train_preds = (train_preds > 0.5).float()
-        epoch_dice += dice_coef(train_preds, targets) * len(targets)
-        epoch_loss += loss.item() * len(targets)
+        epoch_dice += dice_coef(train_preds, targets).cpu() * targets.shape[0]
+        epoch_loss += loss.item() * targets.shape[0]
     epoch_loss = epoch_loss / len(loader.dataset)
     epoch_dice = epoch_dice / len(loader.dataset)
 
