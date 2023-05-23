@@ -150,7 +150,8 @@ def train_unet(data_dir: Path, model_num=0, device='cuda', lr=5e-5, batch_size=3
 
         model.eval()
         with torch.no_grad():
-            val_loss, val_dice = data_pass(model, val_loader, device=device)
+            val_loss, val_dice = data_pass(model, val_loader, loss_fn,
+                                           device=device)
         val_losses.append(val_loss)
         val_dices.append(val_dice)
 
