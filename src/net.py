@@ -108,9 +108,10 @@ class LayerEnsembles(nn.Module):
             if '.conv.5' in name:
                 intermediate_layers.append(name)
 
-        self = cls(unet_model, intermediate_layers).to(unet_model)
+        self = cls(unet_model, intermediate_layers)
+        self = self.to(next(unet_model.parameters()).device)
 
-        x = torch.ones(1, *img_size).to(self)
+        x = torch.ones(1, *img_size).to(next(unet_model.parameters()).device)
         output = self(x)
 
         out_channels = []
