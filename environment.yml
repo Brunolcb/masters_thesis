@@ -1,0 +1,14 @@
+name: uncertainty
+channels:
+  - defaults
+dependencies:
+  - python=3.9
+  - torchvision
+  - pytorch=1
+  - pytorch-cuda=11.6
+  - pillow
+  - matplotlib
+  - scikit-learn
+  - ipykernel
+  - wandb
+prefix: /home/brunompacheco/miniconda3/envs/uncertainty
