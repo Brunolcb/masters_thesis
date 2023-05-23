@@ -48,8 +48,8 @@ def get_Xy(path_to_dir: Path):
     X_m, y_m= np.zeros((210, 128, 128, 1)), np.zeros((210, 128, 128, 1))
 
     for img, tumor_type in enumerate(os.listdir(path_to_dir)) :
-        for image in os.listdir(path_to_dir/tumor_type) :
-            p = os.path.join(path_to_dir/tumor_type, image)
+        for image in os.listdir(path_to_dir+'/'+tumor_type) :
+            p = os.path.join(path_to_dir+'/'+tumor_type, image)
             # img = cv2.imread(p,cv2.IMREAD_GRAYSCALE)           # read image as  grayscale
             pil_img = Image.open(p).convert("L")
         
