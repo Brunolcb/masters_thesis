@@ -1,15 +1,15 @@
 import numpy as np
 
 
-def dice_coef(preds, target, treshold=0.5):
-    preds = preds>treshold
+def dice_coef(pred, target, treshold=0.5):
+    pred = pred>treshold
     target = target>0.5
-    intersect = (preds * target).sum()
-    union = (preds + target).sum()
-    if union == 0:
+    num = 2 * (pred & target).sum()
+    denom = pred.sum() + target.sum()
+    if denom == 0:
         return 1.0
     else:
-        return (2*intersect/union)
+        return num / denom
 
 def dice_norm_metric(predictions, ground_truth, r = 0.079, threshold = 0.5):
     """
