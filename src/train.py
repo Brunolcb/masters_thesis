@@ -1,10 +1,15 @@
+from pathlib import Path
+
 import torch
+import torch.nn as nn
 import torchvision
 import wandb
 
+from tqdm import tqdm
+
 from .metrics import dice_coef
-from .data import get_loaders_test
-from .net import load_checkpoint
+from .data import get_loaders, get_loaders_test, make_dataset
+from .net import UNET, load_checkpoint, save_checkpoint
 
 
 def check_accuracy(loader, model, loss_fn, epoch, device="cuda", layer='final'):
@@ -79,3 +84,81 @@ def inference(hyperparameters, model, X, y):
         count_test +=1
         
     return x_tests, tests, tests_pred, tests_pred_bin
+
+def data_pass(model, loader, loss_fn, optimizer=None, scaler=None,
+              device=torch.device('cpu')):
+    epoch_dice = 0
+    epoch_loss = 0
+    for data, targets in loader:
+        data = data.to(device)
+        targets = targets.float().to(device)
+
+        # forward
+        with torch.cuda.amp.autocast():
+            predictions = model(data)
+            loss = loss_fn(predictions, targets)
+    
+        # backward
+        if optimizer is not None:
+            optimizer.zero_grad()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            
+        # metrics
+        train_preds = torch.sigmoid(predictions)
+        train_preds = (train_preds > 0.5).float()
+        epoch_dice += dice_coef(train_preds, targets) * len(targets)
+        epoch_loss += loss.item() * len(targets)
+    epoch_loss = epoch_loss / len(loader.dataset)
+    epoch_dice = epoch_dice / len(loader.dataset)
+
+    return epoch_loss, epoch_dice
+
+def train_unet(data_dir: Path, model_num=0, device='cuda', lr=5e-5, batch_size=32, num_epochs=10, num_workers=2, pin_memory=True, model_dir='models/'):
+    model_dir = Path(model_dir)
+    model_dir.mkdir(exist_ok=True)
+
+    device = torch.device(device)
+
+    # load data
+    X_train, y_train, X_val, y_val, _, _ = make_dataset(data_dir)
+
+    train_loader, val_loader = get_loaders(
+        X_train, y_train, X_val, y_val,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+
+    # load model
+    model = UNET(in_channels=1, out_channels=1).to(device)
+
+    # load training stuff
+    loss_fn = nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scaler = torch.cuda.amp.GradScaler()
+
+    train_losses = list()
+    val_losses = list()
+    val_dices = list()
+    for epoch in tqdm(list(range(num_epochs))):
+        model.train()
+        train_loss, _ = data_pass(model, train_loader, loss_fn, optimizer,
+                                  scaler, device)
+        train_losses.append(train_loss)
+
+        model.eval()
+        with torch.no_grad():
+            val_loss, val_dice = data_pass(model, val_loader, device=device)
+        val_losses.append(val_loss)
+        val_dices.append(val_dice)
+
+        # save model
+        checkpoint = {
+            "state_dict": model.state_dict(),
+            "optimizer":optimizer.state_dict(),
+        }
+        save_checkpoint(checkpoint, filename=model_dir/("model_%s.pth.tar" % model_num))
+    
+    return model, train_losses, val_losses, val_dices
