@@ -106,24 +106,28 @@ def get_image_num(image):
     
     return val
 
-def get_loaders(X_train,y_train,X_val,y_val,batch_size,num_workers=4,pin_memory=True):
+def get_loaders(X_train,y_train,X_val,y_val,batch_size,num_workers=4,pin_memory=True,shuffle=True):
     X_train_tensor = torch.Tensor(X_train.reshape(-1,1,128,128))
     y_train_tensor = torch.Tensor(y_train.reshape(-1,1,128,128))
     
-    train_loader = DataLoader(TensorDataset(X_train_tensor,y_train_tensor),
+    train_loader = DataLoader(
+        TensorDataset(X_train_tensor,y_train_tensor),
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        shuffle=True,) 
+        shuffle=shuffle,
+    ) 
 
     X_val_tensor = torch.Tensor(X_val.reshape(-1,1,128,128))
     y_val_tensor = torch.Tensor(y_val.reshape(-1,1,128,128))
     
-    val_loader = DataLoader(TensorDataset(X_val_tensor,y_val_tensor),
+    val_loader = DataLoader(
+        TensorDataset(X_val_tensor,y_val_tensor),
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        shuffle=True,) 
+        shuffle=shuffle,
+    ) 
 
     return train_loader, val_loader    
 
