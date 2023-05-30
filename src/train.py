@@ -180,5 +180,23 @@ def train_le(data_dir: Path, device='cuda', lr=5e-5, batch_size=32, num_epochs=1
     model = LayerEnsembles.from_UNET(UNET(in_channels=1, out_channels=1).to(device))
 
     model_fname = "le.pth.tar"
-    
+
     return _train(model, model_fname, data_dir, device, lr, batch_size, num_epochs, num_workers, pin_memory, model_dir)
+
+def predict(loader, model):
+    Y_hat = list()
+    Y = list()
+    for imgs, targets in loader:
+        with torch.no_grad():
+            y_hats = model(imgs)
+
+        if isinstance(y_hats, dict):
+            y_hats = list(y_hats.values())
+            y_hats = torch.stack(y_hats)
+
+        Y_hat.append(y_hats)
+        Y.append(targets)
+    Y_hat = torch.cat(Y_hat, dim=1)
+    Y = torch.vstack(Y)
+
+    return Y_hat, Y
