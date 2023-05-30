@@ -2,7 +2,7 @@ import torch
 import torchvision.transforms.functional as TF
 
 from torch import nn, Tensor
-from typing import Dict, Callable, Iterable
+from typing import Dict, Callable, Iterable, List
 
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
@@ -78,6 +78,17 @@ class UNET(nn.Module):
             x = self.ups[idx+1](concat_skip)
 
         return self.final_conv(x)
+
+class UNETEnsemble(nn.Module):
+    def __init__(self, models: List[UNET]) -> None:
+        super().__init__()
+
+        self.models = models
+    
+    def forward(self, x):
+        ys = torch.stack([model(x) for model in self.models])
+
+        return ys
 
 class SegmentationHead(nn.Sequential):
     def __init__(self, in_channels, out_channels, kernel_size=3, dropout=None, activation=None, upsampling=1):
