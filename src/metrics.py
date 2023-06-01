@@ -105,3 +105,32 @@ def compute_retention_curve(confidence: np.ndarray, dices: np.ndarray):
         retention_score.append(np.mean(ret_dices_))
 
     return retention_percentage, retention_score
+
+def rc_curve(confidence, dice,expert=True, expert_cost=0):
+    error = 1 - dice
+
+    error = np.array(error).reshape(-1)
+    confidence = np.array(confidence).reshape(-1)
+    n = len(error)
+    assert len(confidence) == n
+    desc_sort_indices = confidence.argsort()[::-1]
+    error = error[desc_sort_indices]
+    confidence = confidence[desc_sort_indices]
+    idx = np.r_[np.where(np.diff(confidence))[0], n-1]
+    thresholds = confidence[idx]
+    coverages = (1 + idx)/n
+    risks = np.cumsum(error)[idx]/n
+    if expert:
+        if np.any(expert_cost):
+            expert_cost = np.array(expert_cost).reshape(-1)
+            if expert_cost.size == 1:
+                risks += (1 - coverages)*expert_cost
+            else:
+                assert len(expert_cost) == n
+                expert_cost = np.cumsum(expert_cost)
+                expert_cost = expert_cost[-1] - expert_cost
+                risks += expert_cost[idx]/n
+    else:
+        risks /= coverages
+    
+    return coverages, risks ,thresholds
