@@ -193,6 +193,8 @@ def predict(loader, model):
         if isinstance(y_hats, dict):
             y_hats = list(y_hats.values())
             y_hats = torch.stack(y_hats)
+        
+        y_hats = torch.sigmoid(y_hats)
 
         Y_hat.append(y_hats)
         Y.append(targets)
