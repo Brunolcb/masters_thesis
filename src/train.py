@@ -191,9 +191,10 @@ def predict(loader, model):
             y_hats = model(imgs)
 
         if isinstance(y_hats, dict):
-            y_hats = list(y_hats.values())
+            layers = model.layers + ['final',]
+            y_hats = [y_hats[layer] for layer in layers]
             y_hats = torch.stack(y_hats)
-        
+
         y_hats = torch.sigmoid(y_hats)
 
         Y_hat.append(y_hats)
