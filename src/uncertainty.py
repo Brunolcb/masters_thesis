@@ -28,9 +28,14 @@ def entropy_of_expected(probs, epsilon=1e-10):
     """
     mean_probs = np.mean(probs, axis=0)
     log_probs = -np.log(mean_probs + epsilon)
-    return np.sum(mean_probs * log_probs, axis=-1)
+    return np.sum(mean_probs * log_probs, axis=0)
 
 def entropy_of_expected_uncertainty(probs, epsilon=1e-10):
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
     return np.mean(entropy_of_expected(probs, epsilon=epsilon))
 
 def expected_entropy(probs, epsilon=1e-10):
@@ -39,22 +44,46 @@ def expected_entropy(probs, epsilon=1e-10):
     :return: array [num_voxels_X, num_voxels_Y, num_voxels_Z,]
     """
     log_probs = -np.log(probs + epsilon)
-    return np.mean(np.sum(probs * log_probs, axis=-1), axis=0)
+    return np.mean(np.sum(probs * log_probs, axis=1), axis=0)
 
 def expected_entropy_uncertainty(probs, epsilon=1e-10):
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
     return np.mean(expected_entropy(probs, epsilon=epsilon))
 
-def confidence_uncertainty(probs):
+def max_prob_uncertainty(probs):
     """
+    Maximum probability over classes.
+
     :param probs: array [num_models, num_classes, num_voxels_X, num_voxels_Y, num_voxels_Z]
     :return: float
     """
-    return -np.mean(probs)
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
+    confidence = probs.max(1)  # probability of the predicted class
+
+    return -np.mean(confidence)
 
 def max_confidence_uncertainty(probs):
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
     return -np.mean(np.max(probs.reshape((probs.shape[0],-1)), axis=-1))
 
 def max_softmax_uncertainty(probs):
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
     return -np.mean(softmax(probs.reshape((probs.shape[0],-1)), axis=-1).max())
 
 def mutual_information(probs, epsilon=1e-10):
@@ -68,7 +97,12 @@ def mutual_information(probs, epsilon=1e-10):
     return eoe - exe
 
 def mutual_information_uncertainty(probs, epsilon=1e-10):
-    return -np.mean(mutual_information(probs, epsilon=epsilon))
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
+    return np.mean(mutual_information(probs, epsilon=epsilon))
 
 def expected_pw_kl(probs, epsilon=1e-10):
     """
@@ -80,10 +114,15 @@ def expected_pw_kl(probs, epsilon=1e-10):
 
     exe = expected_entropy(probs, epsilon=epsilon)
 
-    return -np.sum(mean_probs * mean_lprobs, axis=1) - exe
+    return -np.sum(mean_probs * mean_lprobs, axis=0) - exe
 
 def expected_pw_kl_uncertainty(probs, epsilon=1e-10):
-    return -np.mean(expected_pw_kl(probs, epsilon=epsilon))
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
+    return np.mean(expected_pw_kl(probs, epsilon=epsilon))
 
 def reverse_mutual_information(probs, epsilon=1e-10):
     epkl = expected_pw_kl(probs, epsilon=epsilon)
@@ -92,7 +131,20 @@ def reverse_mutual_information(probs, epsilon=1e-10):
     return epkl - mi
 
 def reverse_mutual_information_uncertainty(probs, epsilon=1e-10):
-    return -np.mean(reverse_mutual_information(probs, epsilon=epsilon))
+    if probs.shape[1] == 1:  # binary classification, explicit background
+                             # probabilities
+        background = 1. - probs[:,0]
+        probs = np.stack([background, probs[:,0]], axis=1)
+
+    return np.mean(reverse_mutual_information(probs, epsilon=epsilon))
+
+def naive_pred_size_uncertainty(probs):
+    """
+    :param probs: array [num_models, num_classes, num_voxels_X, num_voxels_Y, num_voxels_Z]
+    :return: float
+    """
+    mean_probs = np.mean(probs, axis=0)
+    return -np.sum(mean_probs > 0.5)
 
 def ensemble_uncertainties_classification(probs, epsilon=1e-10):
     """

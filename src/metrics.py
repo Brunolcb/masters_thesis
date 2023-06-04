@@ -11,7 +11,7 @@ def dice_coef(pred, target, treshold=0.5):
     else:
         return num / denom
 
-def dice_norm_metric(predictions, ground_truth, r = 0.079, threshold = 0.5):
+def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     """
     Compute Normalised Dice Coefficient (nDSC), 
     False positive rate (FPR),
