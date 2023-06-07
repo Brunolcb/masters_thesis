@@ -61,12 +61,14 @@ def max_prob_uncertainty(probs):
     :param probs: array [num_models, num_classes, num_voxels_X, num_voxels_Y, num_voxels_Z]
     :return: float
     """
-    if probs.shape[1] == 1:  # binary classification, explicit background
-                             # probabilities
-        background = 1. - probs[:,0]
-        probs = np.stack([background, probs[:,0]], axis=1)
+    mean_probs = np.mean(probs, axis=0)
 
-    confidence = probs.max(1)  # probability of the predicted class
+    if mean_probs.shape[0] == 1:  # binary classification, explicit background
+                                  # probabilities
+        background = 1. - mean_probs[0]
+        mean_probs = np.stack([background, mean_probs[0]], axis=0)
+
+    confidence = mean_probs.max(0)  # probability of the predicted class
 
     return -np.mean(confidence)
 
