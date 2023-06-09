@@ -36,6 +36,19 @@ class NegativeConfidence(SegmentationUncertainty):
         confidence = np.max(probs, axis=0)
         return -np.mean(confidence)
 
+class NegativeForegroundConfidence(SegmentationUncertainty):
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+
+        confidence = np.max(probs, axis=0)
+        confidence *= p >= .5
+
+        return -np.mean(confidence)
+
 class ExpectedEntropy(SegmentationUncertainty):
     def metric(self, probs: np.array, epsilon=1e-9) -> float:
         """
@@ -89,6 +102,23 @@ class PredSizeChange(SegmentationUncertainty):
         pred_high = p >= self.thresholds[1]
 
         return np.sum(pred_low ^ pred_high)
+
+class PredChangenDSC(SegmentationUncertainty):
+    def __init__(self, thresholds=(.1, .9)):
+        super().__init__()
+        self.thresholds = thresholds
+    
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+
+        pred_low = p >= self.thresholds[0]
+        pred_high = p >= self.thresholds[1]
+
+        return -dice_norm_metric(pred_low, pred_high)
 
 class nDSCIntegralOverThreshold(SegmentationUncertainty):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
