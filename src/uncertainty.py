@@ -1,24 +1,114 @@
+from abc import ABC, abstractmethod
+from typing import Any, Callable
 import numpy as np
 from scipy.special import softmax
 
+from src.metrics import dice_norm_metric
 
-#incertezas calculadas a ser selecionada a partir da ultima até a apontada
-def uncertainties_heads(preds,heads):
-    uncertainty_cat = []
-    for i in range(len(preds[0])-1,heads-1,-1):
-        choosen_heads = [pred[i].cpu().numpy().reshape(128,128,1) for pred in preds]
-        uncertainty_cat.append(choosen_heads)
-        
-    uncertainty_cat = np.array(uncertainty_cat,dtype='float32')
-    
-    return np.concatenate((uncertainty_cat, 1-uncertainty_cat), axis = -1)
 
-#incertezas da ultima cabeça
-def uncertainties_final_heads(preds):
-    uncertainty_cat =[pred[-1].cpu().numpy().reshape(128,128,1) for pred in preds]
-    uncertainty_cat = np.array([uncertainty_cat],dtype='float32')
+class SegmentationUncertainty(ABC):
+    """Apply uncertainty metric to image.
+    """
+    @abstractmethod
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+
+    def __call__(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        if probs.shape[0] == 1:  # binary classification
+            background = 1. - probs[0]
+            probs = np.stack([background, probs[0]], axis=0)
+
+        return self.metric(probs)
+
+class NegativeConfidence(SegmentationUncertainty):
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        confidence = np.max(probs, axis=0)
+        return -np.mean(confidence)
+
+class ExpectedEntropy(SegmentationUncertainty):
+    def metric(self, probs: np.array, epsilon=1e-9) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        log_probs = np.log(probs + epsilon)
+        exe = -np.sum(probs * log_probs, axis=0)  # sums over classes
+
+        return np.mean(exe)
+
+class PredSize(SegmentationUncertainty):
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        assert probs.shape[0] == 2
+
+        pred = np.argmax(probs, axis=0)
+
+        return -np.sum(pred)
+
+class PredSizeAtThreshold(SegmentationUncertainty):
+    def __init__(self, threshold=.99):
+        super().__init__()
+        self.threshold = threshold
     
-    return np.concatenate((uncertainty_cat, 1-uncertainty_cat), axis = -1)
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+
+        return -np.sum(p > self.threshold)
+
+class PredSizeChange(SegmentationUncertainty):
+    def __init__(self, thresholds=(.05, .95)):
+        super().__init__()
+        self.thresholds = thresholds
+    
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+
+        pred_low = p >= self.thresholds[0]
+        pred_high = p >= self.thresholds[1]
+
+        return np.sum(pred_low ^ pred_high)
+
+class nDSCIntegralOverThreshold(SegmentationUncertainty):
+    def __init__(self, threshold_lims=(.05, .95), step=.05):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+        self.step = step
+    
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+        pred = p > .5
+
+        ndscs = 0
+        for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
+            ndscs += dice_norm_metric(p > threshold, pred)
+
+        return -ndscs
 
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
