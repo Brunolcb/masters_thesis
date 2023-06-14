@@ -2,11 +2,11 @@ import torch
 import torchvision.transforms.functional as TF
 
 from torch import nn, Tensor
-from typing import Dict, Callable, Iterable
+from typing import Dict, Callable, Iterable, List
 
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
-    print("=> Saving checkpoint")
+    # print("=> Saving checkpoint")
     torch.save(state, filename)
 
 def load_checkpoint(checkpoint, model):
@@ -79,6 +79,17 @@ class UNET(nn.Module):
 
         return self.final_conv(x)
 
+class UNETEnsemble(nn.Module):
+    def __init__(self, models: List[UNET]) -> None:
+        super().__init__()
+
+        self.models = models
+    
+    def forward(self, x):
+        ys = torch.stack([model(x) for model in self.models])
+
+        return ys
+
 class SegmentationHead(nn.Sequential):
     def __init__(self, in_channels, out_channels, kernel_size=3, dropout=None, activation=None, upsampling=1):
         dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
@@ -99,6 +110,30 @@ class LayerEnsembles(nn.Module):
             layer = dict([*self.model.named_modules()])[layer_id]
             layer.register_forward_hook(self.save_outputs_hook(layer_id))
         self._layer_ensemble_active = False
+    
+    @classmethod
+    def from_UNET(cls, unet_model: UNET, img_size=(1, 128, 128)):
+        device = next(unet_model.parameters()).device
+        all_layers = dict([*unet_model.named_modules()])
+        intermediate_layers = []
+        for name, layer in all_layers.items():
+            if '.conv.5' in name:
+                intermediate_layers.append(name)
+
+        self = cls(unet_model, intermediate_layers)
+        self = self.to(device)
+
+        x = torch.ones(1, *img_size).to(device)
+        output = self(x)
+
+        out_channels = []
+        scale_factors = []
+        for _, val in output.items():
+            out_channels.append(val.shape[1])
+            scale_factors.append(x.shape[-1] // val.shape[-1])
+        self.set_output_heads(in_channels=out_channels, scale_factors=scale_factors, classes=1, device=device)
+
+        return self
 
     def set_output_heads(self, in_channels: Iterable[int],
                          scale_factors: Iterable[int], classes: int,

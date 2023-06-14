@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from .metrics import dice_coef
 from .data import get_loaders, get_loaders_test, make_dataset
-from .net import UNET, load_checkpoint, save_checkpoint
+from .net import UNET, LayerEnsembles, load_checkpoint, save_checkpoint
 
 
 def check_accuracy(loader, model, loss_fn, epoch, device="cuda", layer='final'):
@@ -96,7 +96,11 @@ def data_pass(model, loader, loss_fn, optimizer=None, scaler=None,
         # forward
         with torch.cuda.amp.autocast():
             predictions = model(data)
-            loss = loss_fn(predictions, targets)
+            if isinstance(predictions, dict):  # LayerEnsemble
+                loss = sum([loss_fn(pred, targets) for pred in predictions.values()]) / len(predictions)
+                predictions = predictions['final']
+            else:
+                loss = loss_fn(predictions, targets)
     
         # backward
         if optimizer is not None:
@@ -108,14 +112,15 @@ def data_pass(model, loader, loss_fn, optimizer=None, scaler=None,
         # metrics
         train_preds = torch.sigmoid(predictions)
         train_preds = (train_preds > 0.5).float()
-        epoch_dice += dice_coef(train_preds, targets).cpu() * targets.shape[0]
-        epoch_loss += loss.item() * targets.shape[0]
+        epoch_dice += dice_coef(train_preds, targets).item()
+        epoch_loss += loss.item() * len(targets)
     epoch_loss = epoch_loss / len(loader.dataset)
-    epoch_dice = epoch_dice / len(loader.dataset)
+    epoch_dice = epoch_dice / len(loader)
 
     return epoch_loss, epoch_dice
 
-def train_unet(data_dir: Path, model_num=0, device='cuda', lr=5e-5, batch_size=32, num_epochs=10, num_workers=2, pin_memory=True, model_dir='models/'):
+def _train(model, model_fname, data_dir, device='cuda', lr=5e-5, batch_size=32,
+           num_epochs=10, num_workers=2, pin_memory=True, model_dir='models/'):
     model_dir = Path(model_dir)
     model_dir.mkdir(exist_ok=True)
 
@@ -130,9 +135,6 @@ def train_unet(data_dir: Path, model_num=0, device='cuda', lr=5e-5, batch_size=3
         num_workers=num_workers,
         pin_memory=pin_memory,
     )
-
-    # load model
-    model = UNET(in_channels=1, out_channels=1).to(device)
 
     # load training stuff
     loss_fn = nn.BCEWithLogitsLoss()
@@ -160,6 +162,44 @@ def train_unet(data_dir: Path, model_num=0, device='cuda', lr=5e-5, batch_size=3
             "state_dict": model.state_dict(),
             "optimizer":optimizer.state_dict(),
         }
-        save_checkpoint(checkpoint, filename=model_dir/("model_%s.pth.tar" % model_num))
+        save_checkpoint(checkpoint, filename=model_dir/model_fname)
     
     return model, train_losses, val_losses, val_dices
+
+def train_unet(data_dir: Path, model_num=0, device='cuda', lr=5e-5, batch_size=32, num_epochs=10, num_workers=2, pin_memory=True, model_dir='models/'):
+    # load model
+    model = UNET(in_channels=1, out_channels=1).to(device)
+
+    model_fname = "unet_%s.pth.tar" % model_num
+
+    return _train(model, model_fname, data_dir, device, lr, batch_size, num_epochs, num_workers, pin_memory, model_dir)
+
+
+def train_le(data_dir: Path, device='cuda', lr=5e-5, batch_size=32, num_epochs=10, num_workers=2, pin_memory=True, model_dir='models/'):
+    # load model
+    model = LayerEnsembles.from_UNET(UNET(in_channels=1, out_channels=1).to(device))
+
+    model_fname = "le.pth.tar"
+
+    return _train(model, model_fname, data_dir, device, lr, batch_size, num_epochs, num_workers, pin_memory, model_dir)
+
+def predict(loader, model):
+    Y_hat = list()
+    Y = list()
+    for imgs, targets in loader:
+        with torch.no_grad():
+            y_hats = model(imgs)
+
+        if isinstance(y_hats, dict):
+            layers = model.layers + ['final',]
+            y_hats = [y_hats[layer] for layer in layers]
+            y_hats = torch.stack(y_hats)
+
+        y_hats = torch.sigmoid(y_hats)
+
+        Y_hat.append(y_hats)
+        Y.append(targets)
+    Y_hat = torch.cat(Y_hat, dim=1)
+    Y = torch.vstack(Y)
+
+    return Y_hat, Y

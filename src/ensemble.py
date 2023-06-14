@@ -55,3 +55,28 @@ def aula_ndsc_head_func(pred, r=.079):
                 aula_heads[key].append(aula_curve[0])
         aula_heads[key] = np.array(aula_heads[key])
     return aula_heads
+
+def get_le_preds(preds_fpath):
+    preds = dict()
+    with np.load(preds_fpath) as data:
+        Y_hat = data['y_hat']
+        targets = data['y']
+
+        for i in range(Y_hat.shape[0]):
+            preds[f'le_layer_{i:02d}'] = Y_hat[i]
+            preds[f'le_mean_starting_at_{i:02d}'] = Y_hat[i:].mean(0)
+
+    return preds, targets
+
+def get_de_preds(preds_fpath):
+    preds = dict()
+    with np.load(preds_fpath) as data:
+        Y_hat = data['y_hat']
+        targets = data['y']
+
+        for i in range(Y_hat.shape[0]):
+            preds['unet_'+str(i)] = Y_hat[i]
+
+        preds['mean_ensemble'] = Y_hat.mean(0)
+
+    return preds, targets

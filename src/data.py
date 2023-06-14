@@ -40,6 +40,8 @@ def get_augmentations(img):
     return horizontal_flip, vertical_horizontal_flip, imagerotate, imagerotate1, imagerotate2
 
 def get_Xy(path_to_dir: Path):
+    path_to_dir = Path(path_to_dir)
+
     #x for images 
     #y for masks
     #t for target"label"
@@ -48,8 +50,8 @@ def get_Xy(path_to_dir: Path):
     X_m, y_m= np.zeros((210, 128, 128, 1)), np.zeros((210, 128, 128, 1))
 
     for img, tumor_type in enumerate(os.listdir(path_to_dir)) :
-        for image in os.listdir(path_to_dir+'/'+tumor_type) :
-            p = os.path.join(path_to_dir+'/'+tumor_type, image)
+        for image in os.listdir(path_to_dir/tumor_type) :
+            p = os.path.join(path_to_dir/tumor_type, image)
             # img = cv2.imread(p,cv2.IMREAD_GRAYSCALE)           # read image as  grayscale
             pil_img = Image.open(p).convert("L")
         
@@ -104,24 +106,28 @@ def get_image_num(image):
     
     return val
 
-def get_loaders(X_train,y_train,X_val,y_val,batch_size,num_workers=4,pin_memory=True):
+def get_loaders(X_train,y_train,X_val,y_val,batch_size,num_workers=4,pin_memory=True,shuffle=True):
     X_train_tensor = torch.Tensor(X_train.reshape(-1,1,128,128))
     y_train_tensor = torch.Tensor(y_train.reshape(-1,1,128,128))
     
-    train_loader = DataLoader(TensorDataset(X_train_tensor,y_train_tensor),
+    train_loader = DataLoader(
+        TensorDataset(X_train_tensor,y_train_tensor),
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        shuffle=True,) 
+        shuffle=shuffle,
+    ) 
 
     X_val_tensor = torch.Tensor(X_val.reshape(-1,1,128,128))
     y_val_tensor = torch.Tensor(y_val.reshape(-1,1,128,128))
     
-    val_loader = DataLoader(TensorDataset(X_val_tensor,y_val_tensor),
+    val_loader = DataLoader(
+        TensorDataset(X_val_tensor,y_val_tensor),
         batch_size=batch_size,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        shuffle=True,) 
+        shuffle=shuffle,
+    ) 
 
     return train_loader, val_loader    
 

@@ -1,17 +1,17 @@
 import numpy as np
 
 
-def dice_coef(preds, target, treshold=0.5):
-    preds = preds>treshold
+def dice_coef(pred, target, treshold=0.5):
+    pred = pred>treshold
     target = target>0.5
-    intersect = (preds * target).sum()
-    union = (preds + target).sum()
-    if union == 0:
+    num = 2 * (pred & target).sum()
+    denom = pred.sum() + target.sum()
+    if denom == 0:
         return 1.0
     else:
-        return (2*intersect/union)
+        return num / denom
 
-def dice_norm_metric(predictions, ground_truth, r = 0.079, threshold = 0.5):
+def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     """
     Compute Normalised Dice Coefficient (nDSC), 
     False positive rate (FPR),
@@ -105,3 +105,32 @@ def compute_retention_curve(confidence: np.ndarray, dices: np.ndarray):
         retention_score.append(np.mean(ret_dices_))
 
     return retention_percentage, retention_score
+
+def rc_curve(confidence, dice,expert=True, expert_cost=0):
+    error = 1 - dice
+
+    error = np.array(error).reshape(-1)
+    confidence = np.array(confidence).reshape(-1)
+    n = len(error)
+    assert len(confidence) == n
+    desc_sort_indices = confidence.argsort()[::-1]
+    error = error[desc_sort_indices]
+    confidence = confidence[desc_sort_indices]
+    idx = np.r_[np.where(np.diff(confidence))[0], n-1]
+    thresholds = confidence[idx]
+    coverages = (1 + idx)/n
+    risks = np.cumsum(error)[idx]/n
+    if expert:
+        if np.any(expert_cost):
+            expert_cost = np.array(expert_cost).reshape(-1)
+            if expert_cost.size == 1:
+                risks += (1 - coverages)*expert_cost
+            else:
+                assert len(expert_cost) == n
+                expert_cost = np.cumsum(expert_cost)
+                expert_cost = expert_cost[-1] - expert_cost
+                risks += expert_cost[idx]/n
+    else:
+        risks /= coverages
+    
+    return coverages, risks ,thresholds
