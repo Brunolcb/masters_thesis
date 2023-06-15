@@ -3,7 +3,7 @@ from typing import Any, Callable
 import numpy as np
 from scipy.special import softmax
 
-from src.metrics import dice_norm_metric, dice_coef
+from src.metrics import dice_norm_metric, dice_coef, soft_dice_norm_metric
 
 
 class SegmentationUncertainty(ABC):
@@ -136,6 +136,27 @@ class PredChangeDSC(SegmentationUncertainty):
         pred_high = p >= self.thresholds[1]
 
         return -dice_coef(pred_low, pred_high)
+
+class DiceIntegralOverThreshold(SegmentationUncertainty):
+    def __init__(self, threshold_lims=(.05, .95), step=.05):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+        self.step = step
+
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+
+        pred = p > .5
+
+        ndscs = 0
+        for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
+            ndscs += dice_coef(p > threshold, pred)
+
+        return -ndscs
 
 class nDSCIntegralOverThreshold(SegmentationUncertainty):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
