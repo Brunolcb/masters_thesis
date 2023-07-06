@@ -17,6 +17,14 @@ def soft_dice(pred, target):
     dice = (2.*intersection + eps)/(np.sum(pred) + np.sum(target) + eps)  
     return dice
 
+def soft_dice_withzeros(pred, target):
+    eps = 1e-12
+    if np.sum(target) == 0:
+        return 1.0
+    intersection = np.sum(pred*target)                          
+    dice = (2.*intersection + eps)/(np.sum(pred) + np.sum(target) + eps)  
+    return dice
+
 def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     """
     Compute Normalised Dice Coefficient (nDSC), 
