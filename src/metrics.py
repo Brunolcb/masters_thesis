@@ -11,6 +11,12 @@ def dice_coef(pred, target, treshold=0.5):
     else:
         return num / denom
 
+def soft_dice(pred, target):
+    eps = 1e-12
+    intersection = np.sum(pred*target)                          
+    dice = (2.*intersection + eps)/(np.sum(pred) + np.sum(target) + eps)  
+    return dice
+
 def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     """
     Compute Normalised Dice Coefficient (nDSC), 

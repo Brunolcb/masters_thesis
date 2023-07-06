@@ -3,7 +3,7 @@ from typing import Any, Callable
 import numpy as np
 from scipy.special import softmax
 
-from src.metrics import dice_norm_metric, dice_coef
+from src.metrics import dice_norm_metric, dice_coef, soft_dice
 
 
 class SegmentationUncertainty(ABC):
@@ -26,6 +26,31 @@ class SegmentationUncertainty(ABC):
             probs = np.stack([background, probs[0]], axis=0)
 
         return self.metric(probs)
+    
+class SegmentationUncertaintyWithNoise(ABC):
+    """Apply uncertainty metric to image.
+    """
+    @abstractmethod
+    def metric(self, probs: np.array, probs_with_noise: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+
+    def __call__(self, probs: np.array, probs_with_noise: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        if probs.shape[0] == 1:  # binary classification
+            background = 1. - probs[0]
+            probs = np.stack([background, probs[0]], axis=0)
+            
+        if probs_with_noise.shape[0] == 1:  # binary classification
+            background_with_noise = 1. - probs_with_noise[0]
+            probs_with_noise = np.stack([background_with_noise, probs_with_noise[0]], axis=0)
+            
+        return self.metric(probs, probs_with_noise)
 
 class NegativeConfidence(SegmentationUncertainty):
     def metric(self, probs: np.array) -> float:
@@ -176,7 +201,8 @@ class DSCIntegralOverThreshold(SegmentationUncertainty):
             dscs += dice_coef(p > threshold, pred)
 
         return -dscs
-class DSCIntegralOverThreshold(SegmentationUncertainty):
+    
+class SoftDSCIntegralOverThreshold(SegmentationUncertainty):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -188,11 +214,10 @@ class DSCIntegralOverThreshold(SegmentationUncertainty):
         :return: float
         """
         p = np.sum(probs[1:], axis=0)  # probability of foreground
-        pred = p > .5
 
         dscs = 0
         for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
-            dscs += dice_coef(p > threshold, pred)
+            dscs += soft_dice(p,p > threshold)
 
         return -dscs
 
@@ -233,11 +258,42 @@ class SoftDice(SegmentationUncertainty):
         self.threshold_lim = threshold_lim
     def metric(self, probs: np.array) -> float:
         y_pred = np.sum(probs[1:], axis=0) 
-        y_true = y_pred > self.threshold_lim
-        eps = 1e-12
-        intersection = np.sum(y_pred*y_true)                          
-        dice = (2.*intersection + eps)/(np.sum(y_pred) + np.sum(y_true) + eps)  
-        return 1-dice   
+        y_true = y_pred > self.threshold_lim        
+        dice = soft_dice(y_pred,y_true)  
+        return -dice   
+
+class SoftDiceWithNoise(SegmentationUncertaintyWithNoise):
+    def __init__(self, threshold_lim=.5):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+    def metric(self, probs: np.array, probs_with_noise: np.array) -> float:
+        y_true = np.sum(probs[1:], axis=0) 
+        y_true = y_true > self.threshold_lim
+        y_pred = np.sum(probs_with_noise[1:], axis=0)
+        dice = soft_dice(y_pred,y_true)  
+        return -dice  
+    
+class DSCIntegralOverThresholdWithNoise(SegmentationUncertaintyWithNoise):
+    def __init__(self, threshold_lims=(.05, .95), step=.05):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+        self.step = step
+    
+    def metric(self, probs: np.array, probs_with_noise: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+        pwn = np.sum(probs_with_noise[1:], axis=0)  # probability of foreground
+        gt = p > .5
+
+        dscs = 0
+        for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
+            dscs += dice_coef(pwn > threshold, gt)
+
+        return -dscs
     
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
