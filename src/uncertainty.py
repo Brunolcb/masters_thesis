@@ -302,6 +302,26 @@ class DSCIntegralOverThresholdWithNoise(SegmentationUncertaintyWithNoise):
             dscs += dice_coef(pwn > threshold, gt)
 
         return -dscs
+
+class DSCIntegralOverNormThreshold(SegmentationUncertainty):
+    def __init__(self, quant_step=20):
+        super().__init__()
+        self.quant_step = quant_step
+    
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+        thresh_lim = np.max(p)
+        pred = p > .5
+
+        dscs = []
+        for threshold in np.linspace(0.0,thresh_lim,20)[1:]:
+            dscs.append(dice_coef(p > threshold, pred))
+
+        return -np.mean(dscs)
     
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
