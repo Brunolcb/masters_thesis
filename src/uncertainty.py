@@ -303,7 +303,7 @@ class DSCIntegralOverThresholdWithNoise(SegmentationUncertaintyWithNoise):
 
         return -dscs
 
-class DSCIntegralOverNormThreshold(SegmentationUncertainty):
+class DSCIntegralOverMaxThreshold(SegmentationUncertainty):
     def __init__(self, quant_step=20):
         super().__init__()
         self.quant_step = quant_step
@@ -322,6 +322,17 @@ class DSCIntegralOverNormThreshold(SegmentationUncertainty):
             dscs.append(dice_coef(p > threshold, pred))
 
         return -np.mean(dscs)
+    
+class SoftlogDice(SegmentationUncertainty):
+    def __init__(self, threshold_lim=.5):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        y_true = y_pred > self.threshold_lim  
+        y_predlog = np.where(y_pred>0.5,y_pred*(1+np.log(y_pred)),(y_pred)*(1+np.log(1-y_pred)))
+        dice = soft_dice(y_predlog,y_true)  
+        return -dice   
     
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
