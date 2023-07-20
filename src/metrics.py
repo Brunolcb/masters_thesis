@@ -1,13 +1,16 @@
 import numpy as np
 
 
-def dice_coef(pred, target, treshold=0.5):
+def dice_coef(pred, target, treshold=0.5, accept_zeros = True):
     pred = pred>treshold
     target = target>0.5
     num = 2 * (pred & target).sum()
     denom = pred.sum() + target.sum()
     if denom == 0:
-        return 1.0
+        if accept_zeros:
+            return 1.0
+        else:
+            return 0.0
     else:
         return num / denom
 

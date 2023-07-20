@@ -183,11 +183,11 @@ class nDSCIntegralOverThreshold(SegmentationUncertainty):
         return -ndscs
 
 class DSCIntegralOverThreshold(SegmentationUncertainty):
-    def __init__(self, threshold_lims=(.05, .95), step=.05):
+    def __init__(self, threshold_lims=(.05, .95), step=.05, accept_zeros = True):
         super().__init__()
         self.threshold_lims = threshold_lims
         self.step = step
-    
+        self.accept_zeros = accept_zeros
     def metric(self, probs: np.array) -> float:
         """
         :param probs: array [num_classes, *image_shape]
@@ -198,7 +198,7 @@ class DSCIntegralOverThreshold(SegmentationUncertainty):
 
         dscs = 0
         for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
-            dscs += dice_coef(p > threshold, pred)
+            dscs += dice_coef(p > threshold, pred, accept_zeros=self.accept_zeros)
 
         return -dscs
     
