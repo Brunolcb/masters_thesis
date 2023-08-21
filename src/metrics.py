@@ -14,8 +14,8 @@ def dice_coef(pred, target, treshold=0.5, accept_zeros = True):
     else:
         return num / denom
 
-def soft_dice(pred, target):
-    eps = 1e-12
+def soft_dice(pred, target, eps=1e-12):
+    eps = eps
     intersection = np.sum(pred*target)                          
     dice = (2.*intersection + eps)/(np.sum(pred) + np.sum(target) + eps)  
     return dice

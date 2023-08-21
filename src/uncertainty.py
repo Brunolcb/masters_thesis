@@ -334,6 +334,21 @@ class SoftlogDice(SegmentationUncertainty):
         dice = soft_dice(y_predlog,y_true)  
         return -dice   
     
+class SoftDice_Var_Eps(SegmentationUncertainty):
+    def __init__(self, threshold_lim=.5, quant=10):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+        self.quant = quant
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0)
+        y_true = y_pred > self.threshold_lim
+        if np.sum(y_true)>0:
+            dice = soft_dice(y_pred,y_true) 
+            return -dice
+        else:
+            max_logit = np.max(y_pred)
+            dice = soft_dice(y_pred,y_true, eps=(1-max_logit)*self.quant)    
+            
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
     """
