@@ -347,7 +347,8 @@ class SoftDice_Var_Eps(SegmentationUncertainty):
             return -dice
         else:
             max_logit = np.max(y_pred)
-            dice = soft_dice(y_pred,y_true, eps=(1-max_logit)*self.quant)    
+            dice = soft_dice(y_pred,y_true, eps=(1-max_logit)*self.quant)
+            return -dice
             
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
