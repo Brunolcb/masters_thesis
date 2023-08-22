@@ -350,7 +350,32 @@ class SoftDice_Var_Eps(SegmentationUncertainty):
             max_logit = np.max(y_pred)
             dice = soft_dice(y_pred,y_true, eps=(1-max_logit)*self.quant)
             return -dice
-            
+        
+class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationUncertainty):
+    def __init__(self, threshold_lims=(.05, .95), step=.05, threshold=.5,eps=1e-12):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+        self.step = step
+        self.eps = eps
+        self.threshold = threshold
+    def metric(self, probs: np.array) -> float:
+        """
+        :param probs: array [num_classes, *image_shape]
+        :return: float
+        """
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+        pred = p > self.threshold 
+        if np.sum(pred)>0:
+            dscs = 0
+            interval = np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step)
+            for threshold in interval:
+                dscs += dice_coef(p > threshold, pred)
+            dscs = dscs/(interval.shape[0])
+            return -dscs
+        else:
+            dice = soft_dice(p,pred,eps=self.eps)
+            return -dice           
+        
 #funções de medidas de incertezas
 def entropy_of_expected(probs, epsilon=1e-10):
     """
