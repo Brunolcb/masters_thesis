@@ -261,14 +261,15 @@ class FocalLoss(SegmentationUncertainty):
         return focal_loss   
     
 class SoftDice(SegmentationUncertainty):
-    def __init__(self, threshold_lim=.5):
+    def __init__(self, threshold_lim=.5,eps=1e-12):
         super().__init__()
         self.threshold_lim = threshold_lim
+        self.eps=eps
     def metric(self, probs: np.array) -> float:
         y_pred = np.sum(probs[1:], axis=0) 
         y_true = y_pred > self.threshold_lim        
-        dice = soft_dice(y_pred,y_true)  
-        return -dice   
+        dice = soft_dice(y_pred,y_true,eps=self.eps)  
+        return -dice    
 
 class SoftDiceWithNoise(SegmentationUncertaintyWithNoise):
     def __init__(self, threshold_lim=.5):
