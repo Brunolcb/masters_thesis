@@ -72,7 +72,7 @@ def soft_dice_norm_metric(pred, target, r=0.0783):
     Compute Normalised Dice Coefficient (nDSC), 
     False positive rate (FPR),
     False negative rate (FNR) for a single example.
-    
+
     Args:
       target: `numpy.ndarray`, binary ground truth segmentation target,
                      with shape [H, W, D].
@@ -149,5 +149,9 @@ def rc_curve(confidence, dice,expert=True, expert_cost=0):
                 risks += expert_cost[idx]/n
     else:
         risks /= coverages
+
+    risks = np.insert(risks, 0, risks[0])
+    coverages = np.insert(coverages, 0, 0.)
+    thresholds = np.insert(thresholds, 0, thresholds[0])
     
-    return coverages, risks ,thresholds
+    return coverages, risks, thresholds
