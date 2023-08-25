@@ -150,12 +150,8 @@ def rc_curve(confidence, dice,expert=False, expert_cost=0):
     else:
         risks /= coverages
 
-    true_coverages = np.arange(1/n, 1+1e-12, 1/n)
-    true_risks = np.zeros_like(true_coverages)
-    j = 0
-    for i in range(len(true_coverages)):
-        true_risks[i] = risks[j]
-        if np.equal(true_coverages[i], coverages[j]):
-            j += 1
+    coverages = np.insert(coverages, 0, 0)
+    risks = np.insert(risks, 0, 0)
+    thresholds = np.insert(thresholds, 0, 0)
     
-    return true_coverages, true_risks, thresholds
+    return coverages, risks, thresholds
