@@ -46,7 +46,7 @@ def get_Xy(path_to_dir: Path):
     #y for masks
     #t for target"label"
     X_b, y_b = np.zeros((437, 128, 128, 1)), np.zeros((437, 128, 128, 1))
-    X_n, y_n = np.zeros((133, 128, 128, 1)), np.zeros((133, 128, 128, 1))
+    #X_n, y_n = np.zeros((133, 128, 128, 1)), np.zeros((133, 128, 128, 1))  #removed normal images
     X_m, y_m= np.zeros((210, 128, 128, 1)), np.zeros((210, 128, 128, 1))
 
     for img, tumor_type in enumerate(os.listdir(path_to_dir)) :
@@ -64,8 +64,8 @@ def get_Xy(path_to_dir: Path):
                 # some images have multiple separate masks for multiple tumors 
                 if image[0] == 'b' :
                     y_b[get_image_num(image)-1] += np.array(pil_img).reshape(128,128,1)    
-                if image[0] == 'n' :
-                    y_n[get_image_num(image)-1] += np.array(pil_img).reshape(128,128,1)  
+                #if image[0] == 'n' :
+                #    y_n[get_image_num(image)-1] += np.array(pil_img).reshape(128,128,1)  
                 if image[0] == 'm' :
                     y_m[get_image_num(image)-1] += np.array(pil_img).reshape(128,128,1)  
             else:
@@ -76,12 +76,14 @@ def get_Xy(path_to_dir: Path):
 
                 if image[0] == 'b' :
                     X_b[get_image_num(image)-1] = np.array(pil_img).reshape(128,128,1)  
-                if image[0] == 'n' :
-                    X_n[get_image_num(image)-1] = np.array(pil_img).reshape(128,128,1)  
+                #if image[0] == 'n' :
+                #    X_n[get_image_num(image)-1] = np.array(pil_img).reshape(128,128,1)  
                 if image[0] == 'm' :
                     X_m[get_image_num(image)-1] = np.array(pil_img).reshape(128,128,1)  
-    X = np.concatenate((X_b, X_n, X_m), axis = 0)
-    y = np.concatenate((y_b, y_n, y_m), axis = 0)
+    #X = np.concatenate((X_b, X_n, X_m), axis = 0)
+    #y = np.concatenate((y_b, y_n, y_m), axis = 0)
+    X = np.concatenate((X_b, X_m), axis = 0)
+    y = np.concatenate((y_b, y_m), axis = 0)
 
     X = X / 255
     y = y / 255
