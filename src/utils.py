@@ -21,12 +21,19 @@ def plot_rc_curves(uncertainties: dict, scores, type_dice=True):
     plt.plot(coverages, risks, linestyle='--', label=f"ideal ({rcauc:.3f})")
 
     # random uncertainty estimation
-    random_risks = np.zeros(scores.shape)
+    '''random_risks = np.zeros(scores.shape)
     n_random = 10
     for _ in range(n_random):
         coverages, risks, _ = rc_curve(np.random.rand(*scores.shape),
                                        scores, expert=False, expert_cost=0, type_dice=type_dice)
-        random_risks += risks / n_random
+        random_risks += risks / n_random'''
+    if type_dice == True:
+        random_risks = np.repeat(1-np.mean(scores), scores.shape)
+        coverages = np.linspace(0,1,scores.shape[0])
+    else:
+        random_risks = np.repeat(np.mean(scores), scores.shape)
+        coverages = np.linspace(0,1,scores.shape[0])
+        
     rcauc = auc(coverages, random_risks)
     plt.plot(coverages, random_risks, linestyle='--', label=f"random ({rcauc:.3f})")
 
