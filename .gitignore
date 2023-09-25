@@ -179,3 +179,7 @@ pyrightconfig.json
 data/*
 
 *.pth.tar
+
+.vscode
+
+models/
