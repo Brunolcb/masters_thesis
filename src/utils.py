@@ -1,11 +1,26 @@
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
+import dask.array as da
 
 from sklearn.metrics import auc
 
 from src.metrics import rc_curve, dice_coef, hd95
 
+
+def get_noise_with_Lcov(Lcov_path: str, img_shape: tuple, n=None):
+    L = da.from_npy_stack(Lcov_path)
+
+    if n is None:
+        eta = da.random.normal(0, size=L.shape[1])
+        eta = L @ eta
+        eta = eta.reshape(*img_shape)
+    else:
+        eta = da.random.normal(0, size=(n, L.shape[1]))
+        eta = eta @ L.T
+        eta = eta.reshape(n, *img_shape)
+
+    return eta.compute()
 
 def plot_rc_curves(confidences: dict, errors: np.array, ax):
     random_aurc = np.mean(errors)
