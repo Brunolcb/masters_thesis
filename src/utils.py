@@ -7,42 +7,45 @@ from sklearn.metrics import auc
 from src.metrics import rc_curve, dice_coef, hd95
 
 
-def plot_rc_curves(uncertainties: dict, scores, type_dice=True):
-    for metric, uncertainty in uncertainties.items():
-        coverages, risks, _ = rc_curve(-uncertainty, scores, expert=False, expert_cost=0, type_dice=type_dice)
-        rcauc = auc(coverages, risks)
-        plt.plot(coverages, risks, label=f"{metric} ({rcauc:.3f})")
+def plot_rc_curves(confidences: dict, errors: np.array, ax):
+    random_aurc = np.mean(errors)
 
-    #ideal RC curve
-    if type_dice == True:
-        coverages, risks, _ = rc_curve(scores, scores, expert=False, expert_cost=0)
-    else:
-        coverages, risks, _ = rc_curve(-scores, scores, expert=False, expert_cost=0, type_dice=type_dice)
-    rcauc = auc(coverages, risks)
-    plt.plot(coverages, risks, linestyle='--', label=f"ideal ({rcauc:.3f})")
+    ideal_coverage, ideal_risk, _ = rc_curve(-errors, errors)
+    ideal_aurc = auc(ideal_coverage, ideal_risk)
 
-    # random uncertainty estimation
-    '''random_risks = np.zeros(scores.shape)
-    n_random = 10
-    for _ in range(n_random):
-        coverages, risks, _ = rc_curve(np.random.rand(*scores.shape),
-                                       scores, expert=False, expert_cost=0, type_dice=type_dice)
-        random_risks += risks / n_random'''
-    if type_dice == True:
-        random_risks = np.repeat(1-np.mean(scores), scores.shape)
-        coverages = np.linspace(0,1,scores.shape[0])
-    else:
-        random_risks = np.repeat(np.mean(scores), scores.shape)
-        coverages = np.linspace(0,1,scores.shape[0])
-        
-    rcauc = auc(coverages, random_risks)
-    plt.plot(coverages, random_risks, linestyle='--', label=f"random ({rcauc:.3f})")
+    ax = plot_baselines(errors, ax)
 
-    ylim = list(plt.ylim())
-    ylim[0] = 0.
-    plt.ylim(ylim)
-    plt.xlim(0,1)
-    plt.legend()
+    for name, confidence in confidences.items():
+        plot_rc_curve(confidence, errors, name, ax, low_aurc=ideal_aurc, high_aurc=random_aurc)
+
+    ax.set_xlim(0,1)
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.grid()
+    ax.legend()
+
+    return ax
+
+def plot_baselines(errors, ax, **kwargs):
+    ax.hlines(np.mean(errors), 0, 1, colors='gray', linestyles='dashed', **kwargs)
+
+    coverages, risks, _ = rc_curve(-errors, errors, expert=False)
+
+    ax.plot(coverages, risks, linestyle='dashed', c='gray', **kwargs)
+
+    return ax
+
+def plot_rc_curve(confidence, errors, label, ax, low_aurc=0, high_aurc=None,
+                  **kwargs):
+    coverages, risks, _ = rc_curve(confidence, errors)
+
+    aurc = auc(coverages, risks)
+    aurc -= low_aurc
+    
+    if high_aurc is not None:
+        high_aurc -= low_aurc
+        aurc = aurc / high_aurc
+
+    ax.plot(coverages, risks, label=f"{label} ({aurc:.3f})")
 
 def plot_segmentation_performance_report(results_fpath):
     _results_fpath = Path(results_fpath)

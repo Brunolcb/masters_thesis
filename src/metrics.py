@@ -115,12 +115,7 @@ def compute_retention_curve(confidence: np.ndarray, dices: np.ndarray):
 
     return retention_percentage, retention_score
 
-def rc_curve(confidence, metric,expert=True, expert_cost=0, type_dice =True):
-    if type_dice == True:
-        error = 1 - metric
-    else:
-        error = metric
-        
+def rc_curve(confidence, error, expert=False, expert_cost=0):
     error = np.array(error).reshape(-1)
     confidence = np.array(confidence).reshape(-1)
     n = len(error)

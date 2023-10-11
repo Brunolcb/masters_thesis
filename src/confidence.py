@@ -6,8 +6,8 @@ from scipy.special import softmax
 from src.metrics import dice_norm_metric, dice_coef, soft_dice, sigmoid, soft_dice_norm_metric, hd95
 
 
-class SegmentationUncertainty(ABC):
-    """Apply uncertainty metric to image.
+class SegmentationConfidence(ABC):
+    """Apply confidence metric to image.
     """
     @abstractmethod
     def metric(self, probs: np.array) -> float:
@@ -27,7 +27,7 @@ class SegmentationUncertainty(ABC):
 
         return self.metric(probs)
     
-class SegmentationUncertaintyWithNoise(ABC):
+class SegmentationConfidenceWithNoise(ABC):
     """Apply uncertainty metric to image.
     """
     @abstractmethod
@@ -52,16 +52,16 @@ class SegmentationUncertaintyWithNoise(ABC):
             
         return self.metric(probs, probs_with_noise)
 
-class NegativeConfidence(SegmentationUncertainty):
+class MeanMaxConfidence(SegmentationConfidence):
     def metric(self, probs: np.array) -> float:
         """
         :param probs: array [num_classes, *image_shape]
         :return: float
         """
         confidence = np.max(probs, axis=0)
-        return -np.mean(confidence)
+        return np.mean(confidence)
 
-class NegativeForegroundConfidence(SegmentationUncertainty):
+class ForegroundMeanMaxConfidence(SegmentationConfidence):
     def metric(self, probs: np.array) -> float:
         """
         :param probs: array [num_classes, *image_shape]
@@ -72,9 +72,9 @@ class NegativeForegroundConfidence(SegmentationUncertainty):
         confidence = np.max(probs, axis=0)
         confidence *= p >= .5
 
-        return -np.mean(confidence)
+        return np.mean(confidence)
 
-class ExpectedEntropy(SegmentationUncertainty):
+class ExpectedEntropy(SegmentationConfidence):
     def metric(self, probs: np.array, epsilon=1e-9) -> float:
         """
         :param probs: array [num_classes, *image_shape]
@@ -83,9 +83,9 @@ class ExpectedEntropy(SegmentationUncertainty):
         log_probs = np.log(probs + epsilon)
         exe = -np.sum(probs * log_probs, axis=0)  # sums over classes
 
-        return np.mean(exe)
+        return -np.mean(exe)
 
-class PredSize(SegmentationUncertainty):
+class PredSize(SegmentationConfidence):
     def metric(self, probs: np.array) -> float:
         """
         :param probs: array [num_classes, *image_shape]
@@ -95,9 +95,9 @@ class PredSize(SegmentationUncertainty):
 
         pred = np.argmax(probs, axis=0)
 
-        return -np.sum(pred)
+        return np.sum(pred)
 
-class PredSizeAtThreshold(SegmentationUncertainty):
+class PredSizeAtThreshold(SegmentationConfidence):
     def __init__(self, threshold=.99):
         super().__init__()
         self.threshold = threshold
@@ -109,9 +109,9 @@ class PredSizeAtThreshold(SegmentationUncertainty):
         """
         p = np.sum(probs[1:], axis=0)  # probability of foreground
 
-        return -np.sum(p > self.threshold)
+        return np.sum(p > self.threshold)
 
-class PredSizeChange(SegmentationUncertainty):
+class PredSizeChange(SegmentationConfidence):
     def __init__(self, thresholds=(.05, .95)):
         super().__init__()
         self.thresholds = thresholds
@@ -126,9 +126,9 @@ class PredSizeChange(SegmentationUncertainty):
         pred_low = p >= self.thresholds[0]
         pred_high = p >= self.thresholds[1]
 
-        return np.sum(pred_low ^ pred_high)
+        return -np.sum(pred_low ^ pred_high)
 
-class PredChangenDSC(SegmentationUncertainty):
+class PredChangenDSC(SegmentationConfidence):
     def __init__(self, thresholds=(.1, .9)):
         super().__init__()
         self.thresholds = thresholds
@@ -143,9 +143,9 @@ class PredChangenDSC(SegmentationUncertainty):
         pred_low = p >= self.thresholds[0]
         pred_high = p >= self.thresholds[1]
 
-        return -dice_norm_metric(pred_low, pred_high)
+        return dice_norm_metric(pred_low, pred_high)
 
-class PredChangeDSC(SegmentationUncertainty):
+class PredChangeDSC(SegmentationConfidence):
     def __init__(self, thresholds=(.1, .9)):
         super().__init__()
         self.thresholds = thresholds
@@ -160,9 +160,9 @@ class PredChangeDSC(SegmentationUncertainty):
         pred_low = p >= self.thresholds[0]
         pred_high = p >= self.thresholds[1]
 
-        return -dice_coef(pred_low, pred_high)
+        return dice_coef(pred_low, pred_high)
 
-class nDSCIntegralOverThreshold(SegmentationUncertainty):
+class nDSCIntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -180,11 +180,11 @@ class nDSCIntegralOverThreshold(SegmentationUncertainty):
             for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
                 ndscs += dice_norm_metric(p > threshold, pred)
 
-            return -ndscs
+            return ndscs
         else:
-            return np.inf
+            return -np.inf
 
-class DSCIntegralOverThreshold(SegmentationUncertainty):
+class DSCIntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -202,12 +202,12 @@ class DSCIntegralOverThreshold(SegmentationUncertainty):
             for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
                 dscs += dice_coef(p > threshold, pred)
 
-            return -dscs
+            return dscs
         else:
-            return np.inf
+            return -np.inf
 
     
-class SoftDSCIntegralOverThreshold(SegmentationUncertainty):
+class SoftDSCIntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -224,9 +224,9 @@ class SoftDSCIntegralOverThreshold(SegmentationUncertainty):
         for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
             dscs += soft_dice(p,p > threshold)
 
-        return -dscs
+        return dscs
 
-class NewDSCIntegralOverThreshold(SegmentationUncertainty):
+class NewDSCIntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -246,9 +246,9 @@ class NewDSCIntegralOverThreshold(SegmentationUncertainty):
             dscs = 0
             for threshold in np.arange(self.threshold_lims[0]/2, self.threshold_lims[1]/2 + self.step/2, self.step/2):
                 dscs += dice_coef(p > threshold, pred)
-        return -dscs
+        return dscs
 
-class BinaryCrossEntropy(SegmentationUncertainty):
+class BinaryCrossEntropy(SegmentationConfidence):
     def __init__(self, threshold_lim=.5):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -259,9 +259,9 @@ class BinaryCrossEntropy(SegmentationUncertainty):
         term_0 = (1-y_true) * np.log(1-y_pred + 1e-7)
         term_1 = y_true * np.log(y_pred + 1e-7)
         
-        return -np.mean(term_0+term_1)
+        return np.mean(term_0+term_1)
 
-class FocalLoss(SegmentationUncertainty):
+class FocalLoss(SegmentationConfidence):
     def __init__(self, threshold_lim=.5, gamma=2):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -276,9 +276,9 @@ class FocalLoss(SegmentationUncertainty):
         pt = np.clip(pt, eps, 1-eps)
         # FL = -(1-pt)^gamma log(pt)
         focal_loss = -np.mean(np.multiply(np.power(1-pt,self.gamma),np.log(pt)))    
-        return focal_loss   
+        return -focal_loss   
     
-class SoftDice(SegmentationUncertainty):
+class SoftDice(SegmentationConfidence):
     def __init__(self, threshold_lim=.5,eps=1e-12):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -287,9 +287,9 @@ class SoftDice(SegmentationUncertainty):
         y_pred = np.sum(probs[1:], axis=0) 
         y_true = y_pred > self.threshold_lim        
         dice = soft_dice(y_pred,y_true,eps=self.eps)  
-        return -dice   
+        return dice   
 
-class SoftDiceWithNoise(SegmentationUncertaintyWithNoise):
+class SoftDiceWithNoise(SegmentationConfidenceWithNoise):
     def __init__(self, threshold_lim=.5):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -298,9 +298,9 @@ class SoftDiceWithNoise(SegmentationUncertaintyWithNoise):
         y_true = y_true > self.threshold_lim
         y_pred = np.sum(probs_with_noise[1:], axis=0)
         dice = soft_dice(y_pred,y_true)  
-        return -dice  
+        return dice  
     
-class DSCIntegralOverThresholdWithNoise(SegmentationUncertaintyWithNoise):
+class DSCIntegralOverThresholdWithNoise(SegmentationConfidenceWithNoise):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -320,9 +320,9 @@ class DSCIntegralOverThresholdWithNoise(SegmentationUncertaintyWithNoise):
         for threshold in np.arange(self.threshold_lims[0], self.threshold_lims[1] + self.step, self.step):
             dscs += dice_coef(pwn > threshold, gt)
 
-        return -dscs
+        return dscs
 
-class DSCIntegralOverMaxThreshold(SegmentationUncertainty):
+class DSCIntegralOverMaxThreshold(SegmentationConfidence):
     def __init__(self, quant_step=20):
         super().__init__()
         self.quant_step = quant_step
@@ -340,9 +340,9 @@ class DSCIntegralOverMaxThreshold(SegmentationUncertainty):
         for threshold in np.linspace(0.0,thresh_lim,20)[1:]:
             dscs.append(dice_coef(p > threshold, pred))
 
-        return -np.mean(dscs)
+        return np.mean(dscs)
     
-class SoftlogDice(SegmentationUncertainty):
+class SoftlogDice(SegmentationConfidence):
     def __init__(self, threshold_lim=.5):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -351,9 +351,9 @@ class SoftlogDice(SegmentationUncertainty):
         y_true = y_pred > self.threshold_lim  
         y_predlog = np.where(y_pred>0.5,y_pred*(1+np.log(y_pred)),(y_pred)*(1+np.log(1-y_pred)))
         dice = soft_dice(y_predlog,y_true)  
-        return -dice   
+        return dice   
 
-class SoftDice_Var_Eps(SegmentationUncertainty):
+class SoftDice_Var_Eps(SegmentationConfidence):
     def __init__(self, threshold_lim=.5, quant=10):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -363,13 +363,13 @@ class SoftDice_Var_Eps(SegmentationUncertainty):
         y_true = y_pred > self.threshold_lim
         if np.sum(y_true)>0:
             dice = soft_dice(y_pred,y_true) 
-            return -dice
+            return dice
         else:
             max_logit = np.max(y_pred)
             dice = soft_dice(y_pred,y_true, eps=(1-max_logit)*self.quant)
-            return -dice      
+            return dice      
 
-class DSCIntegralOverThreshold_bins(SegmentationUncertainty):
+class DSCIntegralOverThreshold_bins(SegmentationConfidence):
     def __init__(self, threshold_lims_sup=np.array([0.25,0.5,0.75]), threshold_lims_inf=np.array([0.125,0.25,0.5])):
         super().__init__()
         self.threshold_lims_sup = threshold_lims_sup
@@ -386,13 +386,13 @@ class DSCIntegralOverThreshold_bins(SegmentationUncertainty):
         if np.sum(pred)>0:
             for threshold in self.threshold_lims_sup:
                 dscs += dice_coef(p > threshold, pred)
-                return -dscs
+                return dscs
         else:
             for threshold in self.threshold_lims_inf:
                 dscs += dice_coef(p > threshold, pred)
-                return -dscs
+                return dscs
 
-class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationUncertainty):
+class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims_sup=np.array([0.25,0.5,0.75]), threshold_lims_inf=np.array([0.125,0.25,0.5])):
         super().__init__()
         self.threshold_lims_sup = threshold_lims_sup
@@ -409,13 +409,13 @@ class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationUncertainty):
         if np.sum(pred)>0:
             for threshold in self.threshold_lims_sup:
                 dscs += dice_coef(p > threshold, pred)
-                return -dscs
+                return dscs
         else:
             for threshold in self.threshold_lims_inf:
                 dscs += dice_coef(p > threshold, pred)
-                return -dscs
+                return dscs
             
-class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationUncertainty):
+class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05, threshold=.5,eps=1e-12):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -435,12 +435,12 @@ class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationUncertainty):
             for threshold in interval:
                 dscs += dice_coef(p > threshold, pred)
             dscs = dscs/(interval.shape[0])
-            return -dscs
+            return dscs
         else:
             dice = soft_dice(p,pred,eps=self.eps)
-            return -dice
+            return dice
 
-class DIOT_Sigmoid(SegmentationUncertainty):
+class DIOT_Sigmoid(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05, threshold=.5, alpha=1.0, beta= 0.0, gamma=1.0):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -462,11 +462,11 @@ class DIOT_Sigmoid(SegmentationUncertainty):
             for threshold in interval:
                 dscs += dice_coef(p > threshold, pred)
             dscs = dscs/(interval.shape[0])
-            return -dscs
+            return dscs
         else:
-            return -sigmoid(np.sum(p), self.alpha, self.beta,self.gamma)
+            return sigmoid(np.sum(p), self.alpha, self.beta,self.gamma)
         
-class ExpectedEntropy_With_If(SegmentationUncertainty):
+class ExpectedEntropy_With_If(SegmentationConfidence):
     def metric(self, probs: np.array, epsilon=1e-9) -> float:
         """
         :param probs: array [num_classes, *image_shape]
@@ -478,11 +478,11 @@ class ExpectedEntropy_With_If(SegmentationUncertainty):
             log_probs = np.log(probs + epsilon)
             exe = -np.sum(probs * log_probs, axis=0)  # sums over classes
 
-            return np.mean(exe)           
+            return -np.mean(exe)           
         else:
-            return np.inf
+            return -np.inf
         
-class PredChangeDSC_With_If(SegmentationUncertainty):
+class PredChangeDSC_With_If(SegmentationConfidence):
     def __init__(self, thresholds=(.1, .9)):
         super().__init__()
         self.thresholds = thresholds
@@ -499,11 +499,11 @@ class PredChangeDSC_With_If(SegmentationUncertainty):
             pred_low = p >= self.thresholds[0]
             pred_high = p >= self.thresholds[1]
 
-            return -dice_coef(pred_low, pred_high)   
+            return dice_coef(pred_low, pred_high)   
         else:
-            return np.inf
+            return -np.inf
         
-class NegativeConfidence_With_If(SegmentationUncertainty):
+class MeanMaxConfidence_With_If(SegmentationConfidence):
     def metric(self, probs: np.array) -> float:
         """
         :param probs: array [num_classes, *image_shape]
@@ -513,11 +513,11 @@ class NegativeConfidence_With_If(SegmentationUncertainty):
         pred = p > 0.5
         if np.sum(pred)>0:
             confidence = np.max(probs, axis=0)
-            return -np.mean(confidence)
+            return np.mean(confidence)
         else:
-            return np.inf
+            return -np.inf
 
-class SoftnDice(SegmentationUncertainty):
+class SoftnDice(SegmentationConfidence):
     def __init__(self, threshold_lim=.5,eps=1e-12, r=0.0783):
         super().__init__()
         self.threshold_lim = threshold_lim
@@ -527,9 +527,9 @@ class SoftnDice(SegmentationUncertainty):
         y_pred = np.sum(probs[1:], axis=0) 
         y_true = y_pred > self.threshold_lim        
         ndice = soft_dice_norm_metric(y_pred,y_true,r=self.r)  
-        return -ndice   
+        return ndice   
     
-class HD95IntegralOverThreshold(SegmentationUncertainty):
+class HD95IntegralOverThreshold(SegmentationConfidence):
     def __init__(self, threshold_lims=(.05, .95), step=.05):
         super().__init__()
         self.threshold_lims = threshold_lims
@@ -550,9 +550,9 @@ class HD95IntegralOverThreshold(SegmentationUncertainty):
                     hd95_value += hd95(p > threshold, pred)
                     count +=1
                 
-            return hd95_value/count
+            return -hd95_value/count
         else:
-            return -np.inf
+            return np.inf
 #class SquareDistances(SegmentationUncertainty):
 #
 #    def metric(self, probs: np.array) -> float:
