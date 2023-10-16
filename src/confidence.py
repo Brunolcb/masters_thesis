@@ -1,10 +1,18 @@
 from abc import ABC, abstractmethod
 from typing import Any, Callable
+from multiprocessing import Pool
 import numpy as np
-from scipy.special import softmax
+from scipy.special import softmax, logit, expit
 
 from src.metrics import dice_norm_metric, dice_coef, soft_dice, sigmoid, soft_dice_norm_metric, hd95
 
+
+def _add_noise_get_dice(args):
+    p, sigma = args
+    p_eta = expit(
+        logit(p) + np.random.normal(0, sigma) * np.ones_like(p)
+    )
+    return dice_coef(p_eta, p)
 
 class SegmentationConfidence(ABC):
     """Apply confidence metric to image.
@@ -321,6 +329,22 @@ class DSCIntegralOverThresholdWithNoise(SegmentationConfidenceWithNoise):
             dscs += dice_coef(pwn > threshold, gt)
 
         return dscs
+
+class DSCIntegralOverNoise(SegmentationConfidence):
+    def __init__(self, N: int, sigma: float) -> None:
+        super().__init__()
+
+        self.N = N
+        self.sigma = sigma
+    
+    def metric(self, probs: np.array) -> float:
+        p = np.sum(probs[1:], axis=0)  # probability of foreground
+
+        dscs = list()
+        with Pool(10) as pool:
+            dscs = pool.map(_add_noise_get_dice, [(p, self.sigma),] * self.N)
+
+        return np.mean(dscs)
 
 class DSCIntegralOverMaxThreshold(SegmentationConfidence):
     def __init__(self, quant_step=20):
