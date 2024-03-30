@@ -2,7 +2,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import dask.array as da
-
+import pandas as pd
 from sklearn.metrics import auc
 
 from src.metrics import rc_curve, dice_coef, hd95
@@ -12,10 +12,12 @@ def get_noise_with_Lcov(Lcov_path: str, img_shape: tuple, n=None):
     L = da.from_npy_stack(Lcov_path)
 
     if n is None:
+        da.random.seed(0)
         eta = da.random.normal(0, size=L.shape[1])
         eta = L @ eta
         eta = eta.reshape(*img_shape)
     else:
+        da.random.seed(0)
         eta = da.random.normal(0, size=(n, L.shape[1]))
         eta = eta @ L.T
         eta = eta.reshape(n, *img_shape)
@@ -25,7 +27,7 @@ def get_noise_with_Lcov(Lcov_path: str, img_shape: tuple, n=None):
 def plot_rc_curves(confidences: dict, errors: np.array, ax):
     random_aurc = np.mean(errors)
 
-    ideal_coverage, ideal_risk, _ = rc_curve(-errors, errors)
+    ideal_coverage, ideal_risk, _ = rc_curve(-errors, errors, ideal=True)
     ideal_aurc = auc(ideal_coverage, ideal_risk)
 
     ax = plot_baselines(errors, ax)
@@ -43,7 +45,7 @@ def plot_rc_curves(confidences: dict, errors: np.array, ax):
 def plot_baselines(errors, ax, **kwargs):
     ax.hlines(np.mean(errors), 0, 1, colors='gray', linestyles='dashed', **kwargs)
 
-    coverages, risks, _ = rc_curve(-errors, errors, expert=False)
+    coverages, risks, _ = rc_curve(-errors, errors, expert=False, ideal=True)
 
     ax.plot(coverages, risks, linestyle='dashed', c='gray', **kwargs)
 
@@ -59,8 +61,9 @@ def plot_rc_curve(confidence, errors, label, ax, low_aurc=0, high_aurc=None,
     if high_aurc is not None:
         high_aurc -= low_aurc
         aurc = aurc / high_aurc
-
-    ax.plot(coverages, risks, label=f"{label} ({aurc:.3f})")
+     
+    ax.plot(coverages, risks, label=f"{label}")
+    #ax.plot(coverages, risks, label=f"{label} ({aurc:.3f})")
 
 def plot_segmentation_performance_report(results_fpath):
     _results_fpath = Path(results_fpath)
@@ -119,3 +122,57 @@ def plot_segmentation_performance_report(results_fpath):
     fig.tight_layout()
 
     return fig
+
+
+def plot_aurc_curves(confidences: dict, errors: np.array, ax):
+    random_aurc = np.mean(errors)
+
+    ideal_coverage, ideal_risk, _ = rc_curve(-errors, errors, ideal=True)
+    ideal_aurc = auc(ideal_coverage, ideal_risk)
+
+    ax = plot_baselines(errors, ax)
+
+    for name, confidence in confidences.items():
+        plot_rc_curve(confidence, errors, name, ax)
+
+    ax.set_xlim(0,1)
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.grid()
+    ax.legend()
+
+    return ax
+
+def write_aurc_curves(confidences: dict, errors: np.array):
+    aurcs = {}
+    random_aurc = np.mean(errors)
+
+    ideal_coverage, ideal_risk, _ = rc_curve(-errors, errors, ideal=True)
+    ideal_aurc = auc(ideal_coverage, ideal_risk)
+    aurcs['Random'] = random_aurc
+    aurcs['Ideal'] = ideal_aurc
+    for name, confidence in confidences.items():
+        coverage, risk, _ = rc_curve(confidence, errors)
+        aurc = auc(coverage, risk)
+        aurcs[name] = aurc
+    return aurcs
+
+def calculating_aurc_from_dataframe(dataframe: pd.DataFrame, risks =['dice risk', 'ndice risk','hd95 risk']):
+    ideal_coverage = {}
+    ideal_risk = {}
+    aurcs = {}
+    errors = {name:dataframe[name] for name in risks}
+    confidences =  dataframe.drop(risks, axis=1)
+    errors = {name:dataframe[name] for name in risks}
+    random_aurc = {name: np.mean(errors[name]) for name in errors.keys()}
+
+    for name in risks:
+        ideal_coverage[name], ideal_risk[name], _ = rc_curve(-errors[name], errors[name], ideal=True)
+        ideal_aurc = auc(ideal_coverage[name], ideal_risk[name])
+        aurcs[f'Random_{name}'] = random_aurc[name]
+        aurcs[f'Ideal_{name}'] = ideal_aurc
+        for name_conf, confidence in confidences.items():
+            coverage, risk, _ = rc_curve(confidence, errors[name])
+            aurc = auc(coverage, risk)
+            aurcs[name_conf+'_'+name] = aurc
+    return aurcs
+

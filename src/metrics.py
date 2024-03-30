@@ -1,16 +1,529 @@
 import numpy as np
 from scipy.ndimage import distance_transform_edt, binary_erosion, generate_binary_structure
 
+def accuracy(pred, target, threshold=0.5):
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred > threshold
+
+    tp_tn = np.sum(gt == seg)
+
+    return tp_tn/len(gt.flatten())
+
+def balanced_accuracy(pred, target, threshold=0.5):
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred > threshold
+    tp = np.sum(seg[gt == 1])
+    fp = np.sum(seg[gt == 0])
+    fn = np.sum(gt[seg == 0])
+    tn = len(gt.flatten()) -tp -fp -fn
+    return (tp/(tp+fn) + tn/(tn+fp))/2
+
+def soft_dice_b_metric(pred, target, r=0.0783):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      target: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      pred:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+    smooth = 1.
+
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred.astype("float32")
+
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k = 1.0
+        else:
+            k = (1 - r) * np.sum(gt) / (r * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg * gt)
+        fp = np.sum(seg * (1 - gt))
+        fn = np.sum((1 - seg) * gt)
+        fp_scaled = 1/k * fp
+        dsc_norm = (2. * tp + smooth) / (fp_scaled + 2. * tp + fn + smooth)
+
+        return dsc_norm
+    
+def soft_g_dice_metric(pred, target,  r1 = 0.076, r2= 0.076, gamma1=1, gamma2=1):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      target: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      pred:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+    smooth = 1.
+
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred.astype("float32")
+
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 = (1 - r1) * np.sum(gt) / (r1 * (len(gt.flatten()) - np.sum(gt)))
+            k2 = (1 - r2) * np.sum(gt) / (r2 * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg * gt)
+        fp = np.sum(seg * (1 - gt))
+        fn = np.sum((1 - seg) * gt)
+        fp_scaled = (k1**gamma1)* fp
+        fn_scaled = (k2**gamma2)*fn
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn_scaled)
+        return dsc_norm
+    
+def g_dice_metric(predictions, ground_truth, r1 = 0.076, r2= 0.076, gamma1=1, gamma2=1, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 = (1 - r1) * np.sum(gt) / (r1 * (len(gt.flatten()) - np.sum(gt)))
+            k2 = (1 - r2) * np.sum(gt) / (r2 * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = (k1**gamma1)* fp
+        fn_scaled = (k2**gamma2)*fn
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn_scaled)
+        return dsc_norm
+    
+def ablation_1(predictions, ground_truth, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 =  np.sum(gt)/(len(gt.flatten()) - np.sum(gt))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = (k1)* fp
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn)
+        return dsc_norm
+    
+def ablation_2(predictions, ground_truth, r1 = 0.076, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 = (1 - r1) * np.sum(gt) / (r1 * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = (k1)* fp
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn)
+        return dsc_norm 
+    
+def ablation_3(predictions, ground_truth, r1 = 0.076, gamma1=1, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 = (1 - r1) * np.sum(gt) / (r1 * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = (k1**gamma1)* fp
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn)
+        return dsc_norm    
+    
+def ablation_4(predictions, ground_truth, r1 = 0.076, gamma1=1, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 = (1 - r1) * np.sum(gt) / (r1 * (len(gt.flatten()) - np.sum(gt)))
+            k2 =  np.sum(gt) / (len(gt.flatten()) - np.sum(gt))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = (k1**gamma1)* fp
+        fn_scaled = (k2)*fn
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn_scaled)
+        return dsc_norm   
+    
+def ablation_5(predictions, ground_truth, r1 = 0.076, r2= 0.076, gamma1=1, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+        else:
+            k1 = (1 - r1) * np.sum(gt) / (r1 * (len(gt.flatten()) - np.sum(gt)))
+            k2 = (1 - r2) * np.sum(gt) / (r2 * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = (k1**gamma1)* fp
+        fn_scaled = (k2)*fn
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn_scaled)
+        return dsc_norm 
+    
+def new_form_g_dice_metric(pred, target, alpha=1, gamma1=0, gamma2=0):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    smooth = 1.
+
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k1 = 1.0
+            k2 = 1.0
+
+        else:
+            k1 = alpha*((np.sum(gt) /(len(gt.flatten()) - np.sum(gt)))**gamma1)
+            k2 = (1-alpha)*((np.sum(gt) /(len(gt.flatten()) - np.sum(gt)))**gamma2)
+        tp = np.sum(seg * gt)
+        fp = np.sum(seg * (1 - gt))
+        fn = np.sum((1 - seg) * gt)
+        fp_scaled = k1*fp
+        fn_scaled = k2*fn
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn_scaled)
+        return dsc_norm
+    
+def new_form_g_dice_metric_weighted_lesion(pred, target, alpha=1, beta=1):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    smooth = 1.
+
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            h = 1.0
+
+        else:
+            h = (np.sum(gt) /(len(gt.flatten()) - np.sum(gt)))
+        
+            
+        tp = np.sum(seg * gt)
+        fp = np.sum(seg * (1 - gt))
+        fn = np.sum((1 - seg) * gt)
+        fp_scaled = alpha*fp
+        fn_scaled = (1-alpha)*fn
+        dsc_norm = beta*2. * tp / (fp_scaled + 2. * tp + fn_scaled) + (1-beta)*h
+        return dsc_norm
+
+def new_form_g_dice_metric_geometric_lesion(pred, target, alpha=1, beta=1):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    smooth = 1.
+
+    # Cast to float32 type
+    gt = target.astype("float32")
+    seg = pred.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            h = 1.0
+
+        else:
+            h = (np.sum(gt) /(len(gt.flatten()) - np.sum(gt)))
+            
+            
+        tp = np.sum(seg * gt)
+        fp = np.sum(seg * (1 - gt))
+        fn = np.sum((1 - seg) * gt)
+        fp_scaled = alpha*fp
+        fn_scaled = (1-alpha)*fn
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn_scaled)*(h**beta)
+        return dsc_norm
+    
+def dice_bias_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
+    """
+    Compute Normalised Dice Coefficient (nDSC), 
+    False positive rate (FPR),
+    False negative rate (FNR) for a single example.
+    
+    Args:
+      ground_truth: `numpy.ndarray`, binary ground truth segmentation target,
+                     with shape [H, W, D].
+      predictions:  `numpy.ndarray`, binary segmentation predictions,
+                     with shape [H, W, D].
+    Returns:
+      Normalised dice coefficient (`float` in [0.0, 1.0]),
+      False positive rate (`float` in [0.0, 1.0]),
+      False negative rate (`float` in [0.0, 1.0]),
+      between `ground_truth` and `predictions`.
+    """
+
+    # Cast to float32 type
+    gt = ground_truth>threshold
+    gt = gt.astype("float32")
+    seg = predictions>threshold
+    seg = seg.astype("float32")
+    
+    im_sum = np.sum(seg) + np.sum(gt)
+    if im_sum == 0:
+        return 1.0
+    else:
+        if np.sum(gt) == 0:
+            k = 1.0
+        else:
+            k = (1 - r) * np.sum(gt) / (r * (len(gt.flatten()) - np.sum(gt)))
+        tp = np.sum(seg[gt == 1])
+        fp = np.sum(seg[gt == 0])
+        fn = np.sum(gt[seg == 0])
+        fp_scaled = 1/k * fp
+        dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn)
+        return dsc_norm
+
 def sigmoid(x, alpha, beta, gamma):
     return gamma/ (1 + np.exp(-alpha*x+beta))
 
-def dice_coef(pred, target, treshold=0.5):
-    pred = pred>treshold
+def dice_coef(pred, target, threshold=0.5):
+    pred = pred>threshold
     target = target>0.5
     num = 2 * (pred & target).sum()
     denom = pred.sum() + target.sum()
     if denom == 0:
-        return 1.0
+        return 0
     else:
         return num / denom
 
@@ -42,7 +555,7 @@ def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     if im_sum == 0:
         return 1.0
     else:
-        if np.sum(gt) == 0:
+        if np.sum(gt) == len(gt.flatten()):
             k = 1.0
         else:
             k = (1 - r) * np.sum(gt) / (r * (len(gt.flatten()) - np.sum(gt)))
@@ -115,7 +628,7 @@ def compute_retention_curve(confidence: np.ndarray, dices: np.ndarray):
 
     return retention_percentage, retention_score
 
-def rc_curve(confidence, error, expert=False, expert_cost=0):
+def rc_curve(confidence, error, expert=False, expert_cost=0, ideal=False):
     error = np.array(error).reshape(-1)
     confidence = np.array(confidence).reshape(-1)
     n = len(error)
@@ -140,11 +653,15 @@ def rc_curve(confidence, error, expert=False, expert_cost=0):
     else:
         risks /= coverages
         
-    if len(risks)!=n:
+    #if len(risks)!=n and not ideal:
+    if not ideal:
+        coverages = np.insert(coverages, 0, 0)
+        risks = np.insert(risks, 0, risks[0])
+        thresholds = np.insert(thresholds, 0, 0)
+    elif ideal==True:
         coverages = np.insert(coverages, 0, 0)
         risks = np.insert(risks, 0, 0)
         thresholds = np.insert(thresholds, 0, 0)
-    
     return coverages, risks, thresholds
 
 
