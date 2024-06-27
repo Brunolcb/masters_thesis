@@ -5,7 +5,7 @@ import dask.array as da
 import pandas as pd
 from sklearn.metrics import auc
 
-from src.metrics import rc_curve, dice_coef, hd95
+from src.metrics import rc_curve, dice_coef, hd95, accuracy
 
 
 def get_noise_with_Lcov(Lcov_path: str, img_shape: tuple, n=None):
@@ -160,8 +160,12 @@ def calculating_aurc_from_dataframe(dataframe: pd.DataFrame, risks =['dice risk'
     ideal_coverage = {}
     ideal_risk = {}
     aurcs = {}
+    list_all_risks = []
     errors = {name:dataframe[name] for name in risks}
-    confidences =  dataframe.drop(risks, axis=1)
+    for c in dataframe.columns:
+        if c.endswith(' risk'):
+            list_all_risks.append(c)
+    confidences =  dataframe.drop(list_all_risks, axis=1)
     errors = {name:dataframe[name] for name in risks}
     random_aurc = {name: np.mean(errors[name]) for name in errors.keys()}
 
@@ -176,3 +180,81 @@ def calculating_aurc_from_dataframe(dataframe: pd.DataFrame, risks =['dice risk'
             aurcs[name_conf+'_'+name] = aurc
     return aurcs
 
+
+
+def plot_segmentation_performance_report_UAI(y, y_hat,name, threshold=0.5):
+
+
+    dices = list(map(
+        lambda ys_i: 1-dice_coef(ys_i[0].flatten(), ys_i[1].flatten(), threshold=threshold),
+        zip(y_hat,y)
+    ))
+    
+    accs = list(map(
+        lambda ys_i: 1-accuracy(ys_i[0].flatten(), ys_i[1].flatten(), threshold=threshold),
+        zip(y_hat,y)
+    ))
+
+
+    def plot_performance_hist_acc(values, ax):
+        ax.hist(values, bins=20)
+        ylims = ax.get_ylim()
+        mean_performance = np.mean(values)
+        ax.vlines(mean_performance, *ylims, color='red', label=f"{mean_performance:.4E}")
+        ax.set_ylim(*ylims)
+
+        return ax
+    
+    def plot_performance_hist(values, ax):
+        ax.hist(values, bins=20)
+        ylims = ax.get_ylim()
+        mean_performance = np.mean(values)
+        ax.vlines(mean_performance, *ylims, color='red', label=f"{mean_performance:.2f}")
+        ax.set_ylim(*ylims)
+
+        return ax
+    
+    fig1 = plt.figure(figsize=(8, 5))
+    ax_acc = fig1.add_subplot(111)
+
+    ax_acc = plot_performance_hist_acc(accs, ax_acc)
+    ax_acc.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    ax_acc.set_xlabel('Accuracy risk')
+    ax_acc.set_ylabel('Frequency')
+    ax_acc.legend()
+
+    fig2 = plt.figure(figsize=(8, 5))
+    ax_dice = fig2.add_subplot(111)
+
+    ax_dice = plot_performance_hist(dices, ax_dice)
+    ax_dice.set_xlabel('Dice risk')
+    ax_dice.set_ylabel('Frequency')
+    ax_dice.legend()
+
+    fig3 = plt.figure(figsize=(8, 5))
+    ax_gt_size = fig3.add_subplot(111)
+    gt_lesion_load = np.array([yi.sum() / len(yi.flatten()) for yi in y_hat])
+
+    ax_gt_size.hist(gt_lesion_load, bins=20)
+    ylims = ax_gt_size.get_ylim()
+    mean_performance = np.mean(gt_lesion_load)
+    ax_gt_size.vlines(mean_performance, *ylims, color='red', label=f"{mean_performance:.5f}")
+    ax_gt_size.set_xlabel('Ground truth size')
+    ax_gt_size.set_ylabel('Frequency')
+    ax_gt_size.legend()
+
+    fig4 = plt.figure(figsize=(8, 5))
+    ax_probs = fig4.add_subplot(111)
+    probs = np.concatenate([y_hat_i.flatten() for y_hat_i in y_hat], axis=None)
+
+    ax_probs.hist(probs, bins=20)
+    ax_probs.set_yscale('log')
+    ax_probs.set_xlabel('y_hat probability')
+    ax_probs.set_ylabel('Frequency')
+
+    fig1.tight_layout()
+    fig2.tight_layout()
+    fig3.tight_layout()
+    fig4.tight_layout()
+
+    return fig1, fig2, fig3, fig4, mean_performance

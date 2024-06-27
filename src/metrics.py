@@ -1,6 +1,31 @@
 import numpy as np
 from scipy.ndimage import distance_transform_edt, binary_erosion, generate_binary_structure
 
+
+def sme(pred, target, threshold=0.5, soft=False):
+    gt = target.astype("float32")
+    if soft:
+        seg = pred
+    else:
+        seg = pred > threshold
+
+    v = np.sum(gt)
+    v_hat = np.sum(seg)
+    
+    return (v_hat-v)**2
+
+def mae(pred, target, threshold=0.5, soft=False):
+    gt = target.astype("float32")
+    if soft:
+        seg = pred
+    else:
+        seg = pred > threshold
+
+    v = np.sum(gt)
+    v_hat = np.sum(seg)
+    
+    return np.absolute(v_hat-v)
+
 def accuracy(pred, target, threshold=0.5):
     # Cast to float32 type
     gt = target.astype("float32")

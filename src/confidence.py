@@ -3,7 +3,7 @@ from typing import Any, Callable
 import numpy as np
 from scipy.special import softmax, logit, expit
 from src.utils import get_noise_with_Lcov
-from src.metrics import dice_norm_metric, dice_coef, soft_dice, sigmoid, soft_dice_norm_metric, hd95, dice_bias_metric, soft_dice_b_metric, soft_g_dice_metric, g_dice_metric, ablation_1, ablation_2, ablation_3, ablation_4, ablation_5, new_form_g_dice_metric, new_form_g_dice_metric_weighted_lesion, new_form_g_dice_metric_geometric_lesion
+from src.metrics import dice_norm_metric, dice_coef, soft_dice, sigmoid, soft_dice_norm_metric, hd95, dice_bias_metric, soft_dice_b_metric, soft_g_dice_metric, g_dice_metric, ablation_1, ablation_2, ablation_3, ablation_4, ablation_5, new_form_g_dice_metric, new_form_g_dice_metric_weighted_lesion, new_form_g_dice_metric_geometric_lesion, mae
 from multiprocessing import Pool
 from scipy.ndimage.morphology import distance_transform_edt as edt
 from scipy.ndimage import distance_transform_edt
@@ -2937,3 +2937,71 @@ class GenSurfLossConfidence(SegmentationConfidence):
             return -self.gs(p, target,dtm,0.5).item()
         else:
             return -np.inf
+
+class Softmae(SegmentationConfidence):
+    def __init__(self, threshold_lim=.5):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        y_true = y_pred > self.threshold_lim        
+        mae_value = mae(y_pred,y_true, soft=True)
+        return -mae_value  
+    
+
+class Optimumquadratic(SegmentationConfidence):
+    def __init__(self, threshold_lim=.5):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        y_true = y_pred > self.threshold_lim        
+        value = (np.sum(y_true-y_pred))**2 + np.sum(y_pred-y_pred**2)
+        return -value  
+    
+class SoftDice_Opt_thresh(SegmentationConfidence):
+    def __init__(self, threshold_lims=np.linspace(0.001, 0.999, 1000),eps=1e-12):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+        self.eps=eps
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        
+        # Vectorized soft dice function
+        def vectorized_soft_dice(y_pred, threshold_lim, eps):
+            y_true = y_pred > threshold_lim
+            intersection = np.sum(y_pred * y_true)
+            total = np.sum(y_pred) + np.sum(y_true)
+            dice = (2. * intersection + eps) / (total + eps)
+            return dice
+        
+        # Vectorize the soft dice function
+        vectorized_func = np.vectorize(vectorized_soft_dice, excluded=['y_pred','eps'], signature='(m,n),()->()')
+        
+        # Compute dice scores for each threshold using vectorized function
+        dice_values = vectorized_func(y_pred, self.threshold_lims, eps=self.eps)
+        
+        #dice_values = [vectorized_soft_dice(y_pred, thresh, eps=self.eps) for thresh in self.threshold_lims]
+        return np.max(dice_values), self.threshold_lims[np.argmax(dice_values)]    
+    
+class Optimumquadratic_Opt_thresh(SegmentationConfidence):
+    def __init__(self, threshold_lims=np.linspace(0.001, 0.999, 1000)):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        
+        # Vectorized soft dice function
+        def vectorized_opt_quadratic(y_pred, threshold_lim):
+            y_true = y_pred > threshold_lim
+            value = (np.sum(y_true-y_pred))**2 + np.sum(y_pred-y_pred**2)
+            return -value
+        
+        # Vectorize the soft dice function
+        vectorized_func = np.vectorize(vectorized_opt_quadratic, excluded=['y_pred'], signature='(m,n),()->()')
+        
+        # Compute dice scores for each threshold using vectorized function
+        vec_values = vectorized_func(y_pred, self.threshold_lims)
+        
+        #dice_values = [vectorized_soft_dice(y_pred, thresh, eps=self.eps) for thresh in self.threshold_lims]
+        return np.max(vec_values), self.threshold_lims[np.argmax(vec_values)]   

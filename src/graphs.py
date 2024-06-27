@@ -6,15 +6,16 @@ import pandas as pd
 
 from sklearn.metrics import auc, roc_auc_score, average_precision_score
 
-from src.metrics import accuracy, dice_coef, dice_norm_metric, hd95,soft_dice_norm_metric, rc_curve, balanced_accuracy
+from src.metrics import accuracy, dice_coef, dice_norm_metric, hd95,soft_dice_norm_metric, rc_curve, balanced_accuracy, mae, sme
 from src.confidence import (BinaryCrossEntropy, new_form_gSoftDice, new_form_wl_gSoftDice, new_form_geometric_gSoftDice, SoftgDice, gDSCIntegralOverThreshold, bDSCIntegralOverThreshold,SoftnDice,SoftbDice, nDSCIntegralOverThreshold, bDSCIntegralOverThreshold, Lesion_Load,ExpectedEntropy, ExpectedEntropy_With_If,
                             MeanMaxConfidence, MeanMaxConfidence_With_If,
                             PredChangeDSC,
                             HD95IntegralOverThreshold,
                             DSCIntegralOverThreshold, SoftDice, DSC_Cov_based_confidence, DSC_Cov_based_confidence_diff_mag,nDSC_Cov_based_confidence, HD95_Cov_based_confidence, FocalLoss, BinaryCrossEntropy_with_fp_fn, IoULossConfidence, LovaszSoftmaxConfidence, HausdorffDTConfidence, SSLossConfidence,
-AsymLossConfidence, TverskyLossConfidence, GDiceLossConfidence, DistBinaryDiceLossConfidence, BDLossConfidence, WeightedCrossEntropyLossConfidence, TopKLossConfidence, CrossentropyNDConfidence, HausdorffERLossConfidence, Linear_soft_dice, Linear_soft_dice_based_in_lesionload, CrossEntropyWithL1Confidence, BoundaryLossConfidence, HDOneSidedLossConfidence, GenSurfLossConfidence)
+AsymLossConfidence, TverskyLossConfidence, GDiceLossConfidence, DistBinaryDiceLossConfidence, BDLossConfidence, WeightedCrossEntropyLossConfidence, TopKLossConfidence, CrossentropyNDConfidence, HausdorffERLossConfidence, Linear_soft_dice, Linear_soft_dice_based_in_lesionload, CrossEntropyWithL1Confidence, BoundaryLossConfidence, HDOneSidedLossConfidence, GenSurfLossConfidence, Softmae, Optimumquadratic,  SoftDice_Opt_thresh, Optimumquadratic_Opt_thresh)
 from src.utils import plot_baselines, plot_rc_curve, plot_rc_curves, plot_aurc_curves, write_aurc_curves, rc_curve
 from scipy.special import softmax, logit, expit
+from collections import defaultdict
 
 def auroc_func(y,y_hat):
     try:
@@ -44,6 +45,10 @@ def make_fig(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5, soft_thres=0
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
         
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
@@ -52,7 +57,10 @@ def make_fig(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5, soft_thres=0
         'SDC': SoftDice(soft_thres),
         'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
         'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        'BCE': BinaryCrossEntropy()
+        'BCE': BinaryCrossEntropy(),
+        'HDT_loss':HausdorffDTConfidence(threshold = soft_thres),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
         #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
         #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
@@ -98,15 +106,22 @@ def make_fig_aurc(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5, soft_th
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
-        
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+                
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
         'Neg.Entropy': ExpectedEntropy(),
         'Lesion Load':Lesion_Load(soft_thres),
         'SDC': SoftDice(soft_thres),
-        'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
-        'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        'BCE': BinaryCrossEntropy()
+        #'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
+        #'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
+        #'BCE': BinaryCrossEntropy(),
+        'HDT_loss':HausdorffDTConfidence(threshold = soft_thres),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
         #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
         #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
@@ -119,7 +134,8 @@ def make_fig_aurc(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5, soft_th
     }
     confidences = {name: [confidence_metric(y_hat_i) for y_hat_i in y_hat]
                    for name, confidence_metric in confidence_metrics.items()}
-
+    confidences['Avg_HDT_Lession_Load'] = (np.array(confidences['HDT_loss'])+np.array(confidences['Lesion Load']))/2
+    confidences['Avg_HDT_Lession_Load'] = confidences['Avg_HDT_Lession_Load'].tolist()
     ax = plot_aurc_curves(confidences, dice_errors, ax)
 
     ax.set_ylim(0,np.mean(dice_errors)*1.2)
@@ -154,37 +170,42 @@ def make_row_aurc(y, y_hat, threshold = 0.5, soft_thres=0.5, n_dice_r=0.7, metri
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
-        
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+                
     confidence_metrics = {
-        #'MSP': MeanMaxConfidence(),
-        #'Neg.Entropy': ExpectedEntropy(),
+        'MSP': MeanMaxConfidence(),
+        'Neg.Entropy': ExpectedEntropy(),
         'Lesion Load':Lesion_Load(soft_thres),
-        #'SDC': SoftDice(soft_thres),
-        #'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
-        #'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        #'BCE': BinaryCrossEntropy(threshold_lim= soft_thres),
-        #'FocalLoss':FocalLoss(threshold_lim= soft_thres), 
-        #'BCE_with_fp_fn':BinaryCrossEntropy_with_fp_fn(threshold_lim= soft_thres), 
-        #'IOU_loss':IoULossConfidence(threshold= soft_thres), 
-        #'Lovasz_loss':LovaszSoftmaxConfidence(threshold = soft_thres), 
+        'SDC': SoftDice(soft_thres),
+        'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
+        'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
+        'BCE': BinaryCrossEntropy(threshold_lim= soft_thres),
+        'FocalLoss':FocalLoss(threshold_lim= soft_thres), 
+        'BCE_with_fp_fn':BinaryCrossEntropy_with_fp_fn(threshold_lim= soft_thres), 
+        'IOU_loss':IoULossConfidence(threshold= soft_thres), 
+        'Lovasz_loss':LovaszSoftmaxConfidence(threshold = soft_thres), 
         'HDT_loss':HausdorffDTConfidence(threshold = soft_thres),
-        #'SS_loss':SSLossConfidence(threshold = soft_thres),
-        #'Tversky_loss':TverskyLossConfidence(threshold = soft_thres),
-        #'Asym_loss':AsymLossConfidence(threshold = soft_thres),
-        #'GDice_loss':GDiceLossConfidence(threshold = soft_thres),
+        'SS_loss':SSLossConfidence(threshold = soft_thres),
+        'Tversky_loss':TverskyLossConfidence(threshold = soft_thres),
+        'Asym_loss':AsymLossConfidence(threshold = soft_thres),
+        'GDice_loss':GDiceLossConfidence(threshold = soft_thres),
         #'FocalTversky_loss':FocalTversky_lossConfidence(threshold = soft_thres),
         #'PenaltyGDice_loss':PenaltyGDiceLossConfidence(threshold = soft_thres),
         #'ExpLog_loss':ExpLog_lossConfidence(soft_dice_kwargs, wce_kwargs, gamma=0.3, threshold = soft_thres),
         #'BD_loss':BDLossConfidence(threshold = soft_thres),
-        #'DistBinaryDice_loss':DistBinaryDiceLossConfidence(threshold = soft_thres),
+        'DistBinaryDice_loss':DistBinaryDiceLossConfidence(threshold = soft_thres),
         #'WeightedCE_loss':WeightedCrossEntropyLossConfidence(threshold = soft_thres),
         #'TopK_loss':TopKLossConfidence(threshold = soft_thres),
-        #'HER_loss':HausdorffERLossConfidence(threshold = soft_thres)
+        'HER_loss':HausdorffERLossConfidence(threshold = soft_thres),
         'RCE(l1)': CrossEntropyWithL1Confidence(threshold = soft_thres),
         'Linear_soft_dice_a_b=1': Linear_soft_dice(threshold = soft_thres),
         'Linear_soft_dice_based_in_lesionload':  Linear_soft_dice_based_in_lesionload(threshold = soft_thres),
-        'Linear_soft_dice_based_in_lesionload':  Linear_soft_dice_based_in_lesionload(threshold = soft_thres),
         'BoundaryLossConfidence': BoundaryLossConfidence(classes=2, threshold = soft_thres),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'HDOneSidedLossConfidence': HDOneSidedLossConfidence(threshold = soft_thres),
         #'GenSurfLossConfidence': GenSurfLossConfidence(class_weights=None, threshold=soft_thres)
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
@@ -227,7 +248,11 @@ def corruption_level(y_hat, y, error_base=0, threshold = 0.5, soft_thres=0.5, n_
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
-        
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+                
     corruption = {}
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
@@ -236,7 +261,9 @@ def corruption_level(y_hat, y, error_base=0, threshold = 0.5, soft_thres=0.5, n_
         'SDC': SoftDice(soft_thres),
         'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
         'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        'BCE': BinaryCrossEntropy()
+        'BCE': BinaryCrossEntropy(),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
         #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
         #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
@@ -299,7 +326,11 @@ def make_fig_aurc_with_if(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5,
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
-        
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+                
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
         'Neg.Entropy': ExpectedEntropy(),
@@ -307,7 +338,9 @@ def make_fig_aurc_with_if(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5,
         'SDC': SoftDice(soft_thres),
         'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
         'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        'BCE': BinaryCrossEntropy()
+        'BCE': BinaryCrossEntropy(),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
         #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
         #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
@@ -354,7 +387,11 @@ def make_row_aurc_with_if(y, y_hat, threshold = 0.5, soft_thres=0.5, n_dice_r=0.
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
-        
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+                
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
         'Neg.Entropy': ExpectedEntropy(),
@@ -362,7 +399,9 @@ def make_row_aurc_with_if(y, y_hat, threshold = 0.5, soft_thres=0.5, n_dice_r=0.
         'SDC': SoftDice(soft_thres),
         'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
         'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        'BCE': BinaryCrossEntropy()
+        'BCE': BinaryCrossEntropy(),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
         #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
         #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
@@ -401,7 +440,11 @@ def corruption_level_with_if(y_hat, y, error_base=0, threshold = 0.5, soft_thres
     elif metric == 'aupr':
         dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
         dice_errors = 1 - dice_scores
-        
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])     
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+                
     corruption = {}
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
@@ -410,7 +453,9 @@ def corruption_level_with_if(y_hat, y, error_base=0, threshold = 0.5, soft_thres
         'SDC': SoftDice(soft_thres),
         'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
         'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
-        'BCE': BinaryCrossEntropy()
+        'BCE': BinaryCrossEntropy(),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
         #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
         #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
@@ -459,6 +504,10 @@ def make_dataframe(y, y_hat,file_name, threshold = 0.5, soft_thres=0.5, n_dice_r
     aupr_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
     aupr_errors = 1 - aupr_scores
     
+    mae_errors = np.stack([mae(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+     
+    sme_errors = np.stack([sme(y_hat[i], y[i],threshold=threshold) for i in range(len(y))])
+        
     confidence_metrics = {
         'MSP': MeanMaxConfidence(),
         'Neg.Entropy': ExpectedEntropy(),
@@ -488,6 +537,8 @@ def make_dataframe(y, y_hat,file_name, threshold = 0.5, soft_thres=0.5, n_dice_r
         'Linear_soft_dice_a_b=1': Linear_soft_dice(threshold = soft_thres),
         'Linear_soft_dice_based_in_lesionload':  Linear_soft_dice_based_in_lesionload(threshold = soft_thres),
         'BoundaryLossConfidence': BoundaryLossConfidence(classes=2, threshold = soft_thres),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
         #'HDOneSidedLossConfidence': HDOneSidedLossConfidence(threshold = soft_thres),
         #'GenSurfLossConfidence': GenSurfLossConfidence(class_weights=None, threshold=soft_thres)
         #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
@@ -512,4 +563,121 @@ def make_dataframe(y, y_hat,file_name, threshold = 0.5, soft_thres=0.5, n_dice_r
     all_dict['bacc risk'] = bacc_errors
     all_dict['auroc risk'] = auroc_errors
     all_dict['aupr risk'] = aupr_errors
+    all_dict['mae risk'] = mae_errors
+    all_dict['sme risk'] = sme_errors
+    
     pd.DataFrame.from_dict(all_dict).to_pickle(f"../dataframes/{file_name}.pkl")  
+    
+
+def make_fig_2(y, y_hat,dir_path_save, name,dpi=300, threshold = 0.5, soft_thres=0.5, n_dice_r=0.7, metric='dice', ref = 'SDC_Opt_thresh'):
+    fig, ax = plt.subplots()
+    
+        
+    confidence_metrics = {
+        'MSP': MeanMaxConfidence(),
+        'Neg.Entropy': ExpectedEntropy(),
+        'Lesion Load':Lesion_Load(soft_thres),
+        'SDC': SoftDice(soft_thres),
+        'SoftnDice': SoftnDice(r= n_dice_r, threshold_lim= soft_thres),
+        'HD95IOT': HD95IntegralOverThreshold(threshold_lim= soft_thres),
+        'BCE': BinaryCrossEntropy(),
+        'HDT_loss':HausdorffDTConfidence(threshold = soft_thres),
+        'Softmae':Softmae(threshold_lim= soft_thres),
+        'Optimum_quadratic': Optimumquadratic(threshold_lim= soft_thres),
+        #'DSCIntegralOverThreshold': DSCIntegralOverThreshold(),
+        #'bDSCIntegralOverThreshold': bDSCIntegralOverThreshold(r=0.08644042231819847),
+        #'new_form_gSoftDice': new_form_gSoftDice(alpha=best_alpha,gamma1=best_g1, gamma2=best_g2),
+    #    'SoftLesion_Load':SoftLesion_Load(),
+    #    'DSC_Cov_based_confidence_Min_Max':DSC_Cov_based_confidence(eta),
+    #    'DSC_Cov_based_confidence_0.5':DSC_Cov_based_confidence_diff_mag(eta,alpha=alpha1),
+    #    'DSC_Cov_based_confidence_1.5':DSC_Cov_based_confidence_diff_mag(eta,alpha=alpha2),
+    #    'DSC_Cov_based_confidence_2.0':DSC_Cov_based_confidence_diff_mag(eta,alpha=alpha3),
+    #    'DSC_Cov_based_confidence_Multi':DSC_Cov_based_confidence_diff_mag(eta,alpha=alpha4),
+    }
+    confidences = defaultdict(list)
+    optimum_threshs = defaultdict(list)
+    for name, confidence_metric in confidence_metrics.items():
+        conf, thresh = confidence_metric(y_hat_i)
+        confidences[name].append(conf)
+        optimum_threshs[name].append(thresh)
+        
+    
+    if metric == 'dice':
+        dice_scores = np.stack([new_dice_coef(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric=='ndice':
+        dice_scores = np.stack([dice_norm_metric(y_hat[i], y[i],threshold=optimum_threshs[ref][i],r=n_dice_r) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric =='hd95':
+        dice_errors = np.stack([hd95(y_hat[i], y[i]) for i in range(len(y))])
+    elif metric == 'acc':
+        dice_scores = np.stack([accuracy(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'bacc':
+        dice_scores = np.stack([balanced_accuracy(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'auroc':
+        dice_scores = np.stack([auroc_func(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'aupr':
+        dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+                                
+    ax = plot_rc_curves(confidences, dice_errors, ax)
+
+    ax.set_ylim(0,np.mean(dice_errors)*1.2)
+
+    ax.set_title('%s'%name)
+    ax.legend(loc='lower right')
+    ax.set_ylabel('1-Dice')
+    ax.set_xlabel('Coverage')
+    fig.savefig('../%s/%s.pdf'%(dir_path_save,name), dpi=dpi)
+    fig.show()
+    
+def make_row_aurc_2(y, y_hat, threshold = 0.5, soft_thres=0.5, n_dice_r=0.7, metric='dice', ref='SoftDice_Opt_thresh'):
+    confidence_metrics = {
+        'SoftDice_Opt_thresh': SoftDice_Opt_thresh(),
+        'Optimumquadratic_Opt_thresh': Optimumquadratic_Opt_thresh(),
+    }
+    confidences = defaultdict(list)
+    optimum_threshs = defaultdict(list)
+    for name, confidence_metric in confidence_metrics.items():
+        for y_hat_i in y_hat:
+            conf, thresh = confidence_metric(y_hat_i)
+            confidences[name].append(conf)
+            optimum_threshs[name].append(thresh)
+        
+    
+    if metric == 'dice':
+        dice_scores = np.stack([dice_coef(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric=='ndice':
+        dice_scores = np.stack([dice_norm_metric(y_hat[i], y[i],threshold=optimum_threshs[ref][i],r=n_dice_r) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric =='hd95':
+        dice_errors = np.stack([hd95(y_hat[i], y[i]) for i in range(len(y))])
+    elif metric == 'acc':
+        dice_scores = np.stack([accuracy(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'bacc':
+        dice_scores = np.stack([balanced_accuracy(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'auroc':
+        dice_scores = np.stack([auroc_func(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'aupr':
+        dice_scores = np.stack([average_precision_score(y[i].flatten(), y_hat[i].flatten()) for i in range(len(y))])
+        dice_errors = 1 - dice_scores
+    elif metric == 'mae':
+        dice_errors = np.stack([mae(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+    elif metric == 'sme':
+        dice_errors = np.stack([sme(y_hat[i], y[i],threshold=optimum_threshs[ref][i]) for i in range(len(y))])
+                                
+    
+    aurcs = write_aurc_curves(confidences, dice_errors)
+    
+    return aurcs
