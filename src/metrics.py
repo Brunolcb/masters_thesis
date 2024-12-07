@@ -1,6 +1,17 @@
 import numpy as np
 from scipy.ndimage import distance_transform_edt, binary_erosion, generate_binary_structure
 
+def mape(pred, target, threshold=0.5, soft=False):
+    gt = target.astype("float32")
+    if soft:
+        seg = pred
+    else:
+        seg = pred > threshold
+
+    v = np.sum(gt)
+    v_hat = np.sum(seg)
+    
+    return np.absolute(v_hat-v)/v
 
 def sme(pred, target, threshold=0.5, soft=False):
     gt = target.astype("float32")
@@ -70,7 +81,7 @@ def soft_dice_b_metric(pred, target, r=0.0783):
 
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k = 1.0
@@ -109,7 +120,7 @@ def soft_g_dice_metric(pred, target,  r1 = 0.076, r2= 0.076, gamma1=1, gamma2=1)
 
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -151,7 +162,7 @@ def g_dice_metric(predictions, ground_truth, r1 = 0.076, r2= 0.076, gamma1=1, ga
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -193,7 +204,7 @@ def ablation_1(predictions, ground_truth, threshold = 0.5):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -233,7 +244,7 @@ def ablation_2(predictions, ground_truth, r1 = 0.076, threshold = 0.5):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -273,7 +284,7 @@ def ablation_3(predictions, ground_truth, r1 = 0.076, gamma1=1, threshold = 0.5)
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -313,7 +324,7 @@ def ablation_4(predictions, ground_truth, r1 = 0.076, gamma1=1, threshold = 0.5)
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -355,7 +366,7 @@ def ablation_5(predictions, ground_truth, r1 = 0.076, r2= 0.076, gamma1=1, thres
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -397,7 +408,7 @@ def new_form_g_dice_metric(pred, target, alpha=1, gamma1=0, gamma2=0):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k1 = 1.0
@@ -440,7 +451,7 @@ def new_form_g_dice_metric_weighted_lesion(pred, target, alpha=1, beta=1):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             h = 1.0
@@ -483,7 +494,7 @@ def new_form_g_dice_metric_geometric_lesion(pred, target, alpha=1, beta=1):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             h = 1.0
@@ -526,7 +537,7 @@ def dice_bias_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k = 1.0
@@ -578,7 +589,7 @@ def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
     
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == len(gt.flatten()):
             k = 1.0
@@ -591,11 +602,15 @@ def dice_norm_metric(predictions, ground_truth, r = 0.076, threshold = 0.5):
         dsc_norm = 2. * tp / (fp_scaled + 2. * tp + fn)
         return dsc_norm
 
-def soft_dice(pred, target, eps=1e-12):
+def soft_dice(pred, target, eps=0):
     eps = eps
-    intersection = np.sum(pred*target)                          
-    dice = (2.*intersection + eps)/(np.sum(pred) + np.sum(target) + eps)  
-    return dice
+    intersection = np.sum(pred*target)   
+    ratio = (np.sum(pred) + np.sum(target) + eps)  
+    if ratio  == 0.0:
+        return 0.0
+    else:
+        dice = (2.*intersection + eps)/ratio  
+        return dice
 
 def soft_dice_norm_metric(pred, target, r=0.0783):
     """
@@ -622,7 +637,7 @@ def soft_dice_norm_metric(pred, target, r=0.0783):
 
     im_sum = np.sum(seg) + np.sum(gt)
     if im_sum == 0:
-        return 1.0
+        return 0.0
     else:
         if np.sum(gt) == 0:
             k = 1.0
@@ -653,7 +668,7 @@ def compute_retention_curve(confidence: np.ndarray, dices: np.ndarray):
 
     return retention_percentage, retention_score
 
-def rc_curve(confidence, error, expert=False, expert_cost=0, ideal=False):
+def rc_curve(confidence, error, expert=False, expert_cost=0, ideal=False, num_points=1001):
     error = np.array(error).reshape(-1)
     confidence = np.array(confidence).reshape(-1)
     n = len(error)
@@ -678,17 +693,56 @@ def rc_curve(confidence, error, expert=False, expert_cost=0, ideal=False):
     else:
         risks /= coverages
         
-    #if len(risks)!=n and not ideal:
-    if not ideal:
-        coverages = np.insert(coverages, 0, 0)
-        risks = np.insert(risks, 0, risks[0])
-        thresholds = np.insert(thresholds, 0, 0)
-    elif ideal==True:
-        coverages = np.insert(coverages, 0, 0)
-        risks = np.insert(risks, 0, 0)
-        thresholds = np.insert(thresholds, 0, 0)
+    #if not ideal:
+    #    coverages = np.insert(coverages, 0, 0)
+    #    risks = np.insert(risks, 0, risks[0])
+    #    thresholds = np.insert(thresholds, 0, 0)
+    #elif ideal==True:
+    #    coverages = np.insert(coverages, 0, 0)
+    #    risks = np.insert(risks, 0, 0)
+    #    thresholds = np.insert(thresholds, 0, 0)
+    coverages = np.insert(coverages, 0, 0)
+    risks = np.insert(risks, 0, risks[0])
+    thresholds = np.insert(thresholds, 0, 0)
     return coverages, risks, thresholds
 
+    '''error = np.array(error).reshape(-1)
+    confidence = np.array(confidence).reshape(-1)
+    n = len(error)
+    assert len(confidence) == n
+
+    # Sort errors and confidences in descending order of confidence
+    desc_sort_indices = confidence.argsort()[::-1]
+    error = error[desc_sort_indices]
+    confidence = confidence[desc_sort_indices]
+
+    # Find indices where confidence changes
+    idx = np.r_[np.where(np.diff(confidence))[0], n - 1]
+    thresholds = confidence[idx]
+
+    # Calculate coverage
+    coverages = (1 + idx) / n
+
+    # Calculate risks without dividing by n (total error vs. coverage)
+    risks = np.cumsum(error)[idx]
+
+    # Include the point (0,0) in the curve
+    risks = np.r_[0, risks]
+    coverages = np.r_[0, coverages]
+
+    # Perform linear interpolation to the desired number of points
+    coverage_interp = np.linspace(0, coverages[-1], num_points)
+    risks_interp = np.interp(coverage_interp, coverages, risks)
+
+    # Safely divide risks by (n * coverage) without dividing by zero
+    risks_interp = np.divide(
+        risks_interp,
+        n * coverage_interp,
+        out=np.zeros_like(risks_interp),
+        where=coverage_interp != 0
+    )
+
+    return coverage_interp, risks_interp, thresholds'''
 
 
 def hd95(result, reference, voxelspacing=None, connectivity=1):
@@ -771,3 +825,39 @@ def __surface_distances(result, reference, voxelspacing=None, connectivity=1):
     sds = dt[result_border]
     
     return sds
+
+def rc_curve_max(confidence, error, expert=False, expert_cost=0, ideal=False):
+    error = np.array(error).reshape(-1)
+    confidence = np.array(confidence).reshape(-1)
+    n = len(error)
+    assert len(confidence) == n
+    desc_sort_indices = confidence.argsort()[::-1]
+    error = error[desc_sort_indices]
+    confidence = confidence[desc_sort_indices]
+    idx = np.r_[np.where(np.diff(confidence))[0], n-1]
+    thresholds = confidence[idx]
+    coverages = (1 + idx)/n
+    risks = np.maximum.accumulate(error)[idx]
+    if expert:
+        if np.any(expert_cost):
+            expert_cost = np.array(expert_cost).reshape(-1)
+            if expert_cost.size == 1:
+                risks += (1 - coverages)*expert_cost
+            else:
+                assert len(expert_cost) == n
+                expert_cost = np.maximum.accumulate(expert_cost)
+                expert_cost = expert_cost[-1] - expert_cost
+                risks += expert_cost[idx]/n
+    else:
+        risks
+        
+    #if len(risks)!=n and not ideal:
+    if not ideal:
+        coverages = np.insert(coverages, 0, 0)
+        risks = np.insert(risks, 0, risks[0])
+        thresholds = np.insert(thresholds, 0, 0)
+    elif ideal==True:
+        coverages = np.insert(coverages, 0, 0)
+        risks = np.insert(risks, 0, 0)
+        thresholds = np.insert(thresholds, 0, 0)
+    return coverages, risks, thresholds
