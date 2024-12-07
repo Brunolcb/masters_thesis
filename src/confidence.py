@@ -3,7 +3,7 @@ from typing import Any, Callable
 import numpy as np
 from scipy.special import softmax, logit, expit
 from src.utils import get_noise_with_Lcov
-from src.metrics import dice_norm_metric, dice_coef, soft_dice, sigmoid, soft_dice_norm_metric, hd95, dice_bias_metric, soft_dice_b_metric, soft_g_dice_metric, g_dice_metric, ablation_1, ablation_2, ablation_3, ablation_4, ablation_5, new_form_g_dice_metric, new_form_g_dice_metric_weighted_lesion, new_form_g_dice_metric_geometric_lesion, mae
+from src.metrics import dice_norm_metric, dice_coef, soft_dice, sigmoid, soft_dice_norm_metric, hd95, dice_bias_metric, soft_dice_b_metric, soft_g_dice_metric, g_dice_metric, ablation_1, ablation_2, ablation_3, ablation_4, ablation_5, new_form_g_dice_metric, new_form_g_dice_metric_weighted_lesion, new_form_g_dice_metric_geometric_lesion, mae, mape
 from multiprocessing import Pool
 from scipy.ndimage.morphology import distance_transform_edt as edt
 from scipy.ndimage import distance_transform_edt
@@ -315,7 +315,7 @@ class FocalLoss(SegmentationConfidence):
         return -focal_loss   
     
 class SoftDice(SegmentationConfidence):
-    def __init__(self, threshold_lim=.5,eps=1e-12):
+    def __init__(self, threshold_lim=.5,eps=0):
         super().__init__()
         self.threshold_lim = threshold_lim
         self.eps=eps
@@ -452,7 +452,7 @@ class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationConfidence):
                 return dscs
             
 class Soft_Dice_and_DSCIntegralOverThreshold(SegmentationConfidence):
-    def __init__(self, threshold_lims=(.05, .95), step=.05, threshold=.5,eps=1e-12):
+    def __init__(self, threshold_lims=(.05, .95), step=.05, threshold=.5,eps=0):
         super().__init__()
         self.threshold_lims = threshold_lims
         self.step = step
@@ -566,7 +566,7 @@ class Lesion_Load_With_If(SegmentationConfidence):
             return -np.inf
         
 class SoftDice_With_If(SegmentationConfidence):
-    def __init__(self, threshold_lim=.5,eps=1e-12):
+    def __init__(self, threshold_lim=.5,eps=0):
         super().__init__()
         self.threshold_lim = threshold_lim
         self.eps=eps
@@ -580,7 +580,7 @@ class SoftDice_With_If(SegmentationConfidence):
             return -np.inf
         
 class SoftnDice(SegmentationConfidence):
-    def __init__(self, threshold_lim=.5,eps=1e-12, r=0.0783):
+    def __init__(self, threshold_lim=.5,eps=0, r=0.0783):
         super().__init__()
         self.threshold_lim = threshold_lim
         self.eps=eps
@@ -903,7 +903,7 @@ class gDSCIntegralOverThreshold(SegmentationConfidence):
         
         
 class SoftgDice(SegmentationConfidence):
-    def __init__(self, threshold_lim=.5,eps=1e-12, r1= 0.076, r2= 0.076, gamma1=1, gamma2=1):
+    def __init__(self, threshold_lim=.5,eps=0, r1= 0.076, r2= 0.076, gamma1=1, gamma2=1):
         super().__init__()
         self.threshold_lim = threshold_lim
         self.eps=eps
@@ -918,7 +918,7 @@ class SoftgDice(SegmentationConfidence):
         return ndice  
     
 class SoftbDice(SegmentationConfidence):
-    def __init__(self, threshold_lim=.5,eps=1e-12, r=0.0783):
+    def __init__(self, threshold_lim=.5,eps=0, r=0.0783):
         super().__init__()
         self.threshold_lim = threshold_lim
         self.eps=eps
@@ -2960,7 +2960,7 @@ class Optimumquadratic(SegmentationConfidence):
         return -value  
     
 class SoftDice_Opt_thresh(SegmentationConfidence):
-    def __init__(self, threshold_lims=np.linspace(0.001, 0.999, 1000),eps=1e-12):
+    def __init__(self, threshold_lims=np.linspace(0.000, 1.000, 1001),eps=0):
         super().__init__()
         self.threshold_lims = threshold_lims
         self.eps=eps
@@ -2985,7 +2985,7 @@ class SoftDice_Opt_thresh(SegmentationConfidence):
         return np.max(dice_values), self.threshold_lims[np.argmax(dice_values)]    
     
 class Optimumquadratic_Opt_thresh(SegmentationConfidence):
-    def __init__(self, threshold_lims=np.linspace(0.001, 0.999, 1000)):
+    def __init__(self, threshold_lims=np.linspace(0.000, 1.000, 1001)):
         super().__init__()
         self.threshold_lims = threshold_lims
     def metric(self, probs: np.array) -> float:
@@ -3005,3 +3005,116 @@ class Optimumquadratic_Opt_thresh(SegmentationConfidence):
         
         #dice_values = [vectorized_soft_dice(y_pred, thresh, eps=self.eps) for thresh in self.threshold_lims]
         return np.max(vec_values), self.threshold_lims[np.argmax(vec_values)]   
+    
+    
+class SoftDice_New_Opt_thresh(SegmentationConfidence):
+    def __init__(self, threshold_lim_init = 0.5,eps=0):
+        super().__init__()
+        self.threshold_lim_init = threshold_lim_init
+        self.eps=eps
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        
+        for i in range(5):
+            y_true = y_pred > self.threshold_lim_init
+            intersection = np.sum(y_pred * y_true)
+            total = np.sum(y_pred) + np.sum(y_true)
+            dice = (2. * intersection + self.eps) / (total + self.eps)
+            self.threshold_lim_init = dice
+        return dice, dice
+        
+class Softmape(SegmentationConfidence):
+    def __init__(self, threshold_lim=.5):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        y_true = y_pred > self.threshold_lim        
+        mape_value = mape(y_pred,y_true, soft=True)
+        return -mape_value     
+    
+class Softmape_Opt_thresh(SegmentationConfidence):
+    def __init__(self, threshold_lims=np.linspace(0.000, 1.000, 1001)):
+        super().__init__()
+        self.threshold_lims = threshold_lims
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        
+        # Vectorized soft dice function
+        def vectorized_opt_quadratic(y_pred, threshold_lim):
+            y_true = y_pred > threshold_lim
+            value = mape(y_pred,y_true, soft=True)
+            return -value
+        
+        # Vectorize the soft dice function
+        vectorized_func = np.vectorize(vectorized_opt_quadratic, excluded=['y_pred'], signature='(m,n),()->()')
+        
+        # Compute dice scores for each threshold using vectorized function
+        vec_values = vectorized_func(y_pred, self.threshold_lims)
+        
+        #dice_values = [vectorized_soft_dice(y_pred, thresh, eps=self.eps) for thresh in self.threshold_lims]
+        return np.max(vec_values), self.threshold_lims[np.argmax(vec_values)]   
+
+    
+class SoftDice_PLL(SegmentationConfidence):
+    def __init__(self, threshold_lim=.5,eps=0, alpha =0.0):
+        super().__init__()
+        self.threshold_lim = threshold_lim
+        self.eps = eps
+        self.alpha = alpha
+    def metric(self, probs: np.array) -> float:
+        y_pred = np.sum(probs[1:], axis=0) 
+        y_true = y_pred > self.threshold_lim        
+        dice = soft_dice(y_pred,y_true,eps=self.eps) 
+        pll = np.sum(y_true)/len(y_true.flatten())
+        #soft_dice_pll = dice*(1+self.alpha*pll)
+        soft_dice_pll = dice+self.alpha*pll
+        return soft_dice_pll   
+    
+class Median_min_max(SegmentationConfidence):
+    def metric(self, probs: np.array, epsilon=1e-9) -> float:  
+        # y_pred = np.sum(probs[1:], axis=0) 
+        #median =  np.median(y_pred)
+        #max_ = np.max(y_pred)
+        #min_ = np.min(y_pred)
+        #return (median+min_)/max_
+        log_probs = np.log(probs + epsilon)
+        unmap = -np.sum(probs * log_probs, axis=0)
+        median =  np.median(unmap)
+        max_ = np.max(unmap)
+        min_ = np.min(unmap)
+        return -(median+min_)/max_
+
+class Median_min_max1(SegmentationConfidence):
+    def metric(self, probs: np.array, epsilon=1e-9) -> float:  
+        # y_pred = np.sum(probs[1:], axis=0) 
+        #median =  np.median(y_pred)
+        #max_ = np.max(y_pred)
+        #min_ = np.min(y_pred)
+        #return (median+min_)/max_
+        msp = confidence = np.max(probs, axis=0)
+        unmap = 1-msp
+        median =  np.median(unmap)
+        max_ = np.max(unmap)
+        min_ = np.min(unmap)
+        return -(median+min_)/max_
+    
+class Median_min_max2(SegmentationConfidence):
+    def metric(self, probs: np.array, epsilon=1e-9) -> float:  
+        y_pred = np.sum(probs[1:], axis=0) 
+        median =  np.median(y_pred)
+        max_ = np.max(y_pred)
+        min_ = np.min(y_pred)
+        return (median+min_)/max_
+
+     
+class Quantile_thresh(SegmentationConfidence):
+    def __init__(self, threshold_alpha=.5,):
+        super().__init__()
+        self.q = 1 - threshold_alpha
+    def metric(self, probs: np.array, epsilon=1e-9) -> float:
+        log_probs = np.log(probs + epsilon)
+        unmap = -np.sum(probs * log_probs, axis=0)
+        threshold = np.quantile(unmap.flatten(),self.q)
+        u = np.mean(unmap*(unmap>threshold))
+        return -u

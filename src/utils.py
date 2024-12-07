@@ -4,9 +4,19 @@ import numpy as np
 import dask.array as da
 import pandas as pd
 from sklearn.metrics import auc
+from src.metrics import rc_curve, dice_coef, hd95, accuracy,  rc_curve_max
 
-from src.metrics import rc_curve, dice_coef, hd95, accuracy
+def sum_entropy(y_hat, epsilon=1e-12, thresh=0.95):
+    sum_uncert_array = []
+    for mask in y_hat:
+        H = entropy_func(mask, epsilon=1e-12)
+        U = entropy_func(mask, epsilon=1e-12)>thresh
+        sum_uncert_array.append(np.sum(U))
+    return np.array(sum_uncert_array)
 
+def entropy_func(mask, epsilon=1e-12):
+    H = -(mask*np.log(mask+epsilon) + (1-mask)*np.log(1-mask+epsilon))/np.log(2)
+    return H
 
 def get_noise_with_Lcov(Lcov_path: str, img_shape: tuple, n=None):
     L = da.from_npy_stack(Lcov_path)
@@ -51,8 +61,11 @@ def plot_baselines(errors, ax, **kwargs):
 
     return ax
 
-def plot_rc_curve(confidence, errors, label, ax, low_aurc=0, high_aurc=None,
+def plot_rc_curve(confidence, errors, label, ax, i, low_aurc=0, high_aurc=None,
                   **kwargs):
+    total_markers = 8
+    marker_styles = ['v', 'p', 'D', '^', 'o', 's', '*', 'h', 'H', 'x']
+    marker = marker_styles[i]
     coverages, risks, _ = rc_curve(confidence, errors)
 
     aurc = auc(coverages, risks)
@@ -62,7 +75,7 @@ def plot_rc_curve(confidence, errors, label, ax, low_aurc=0, high_aurc=None,
         high_aurc -= low_aurc
         aurc = aurc / high_aurc
      
-    ax.plot(coverages, risks, label=f"{label}")
+    ax.plot(coverages, risks, label=f"{label}", marker=marker, markevery=calculate_markers(len(coverages), total_markers))
     #ax.plot(coverages, risks, label=f"{label} ({aurc:.3f})")
 
 def plot_segmentation_performance_report(results_fpath):
@@ -123,6 +136,16 @@ def plot_segmentation_performance_report(results_fpath):
 
     return fig
 
+def calculate_markers(data_length, num_markers):
+    if data_length == 0:
+        return np.zeros(data_length, dtype=bool)  # Empty mask for no data
+    if num_markers >= data_length:
+        return np.ones(data_length, dtype=bool)  # All points get markers if fewer than requested
+    # Create a boolean mask
+    indices = np.linspace(0, data_length - 1, num_markers, dtype=int)
+    mask = np.zeros(data_length, dtype=bool)
+    mask[indices] = True
+    return mask
 
 def plot_aurc_curves(confidences: dict, errors: np.array, ax):
     random_aurc = np.mean(errors)
@@ -132,8 +155,9 @@ def plot_aurc_curves(confidences: dict, errors: np.array, ax):
 
     ax = plot_baselines(errors, ax)
 
-    for name, confidence in confidences.items():
-        plot_rc_curve(confidence, errors, name, ax)
+    for i, name_confidence in enumerate(confidences.items()):
+        name, confidence = name_confidence
+        plot_rc_curve(confidence, errors, name, ax, i)
 
     ax.set_xlim(0,1)
     ax.set_ylim(0, ax.get_ylim()[1])
@@ -155,6 +179,19 @@ def write_aurc_curves(confidences: dict, errors: np.array):
         aurc = auc(coverage, risk)
         aurcs[name] = aurc
     return aurcs
+
+def write_naurc_curves(confidences: dict, errors: np.array):
+    naurcs = {}
+    random_aurc = np.mean(errors)
+
+    ideal_coverage, ideal_risk, _ = rc_curve(-errors, errors, ideal=True)
+    ideal_aurc = auc(ideal_coverage, ideal_risk)
+    for name, confidence in confidences.items():
+        coverage, risk, _ = rc_curve(confidence, errors)
+        aurc = auc(coverage, risk)
+        naurc = (aurc - ideal_aurc) / (random_aurc - ideal_aurc)
+        naurcs[name] = naurc
+    return naurcs
 
 def calculating_aurc_from_dataframe(dataframe: pd.DataFrame, risks =['dice risk', 'ndice risk','hd95 risk']):
     ideal_coverage = {}
@@ -238,7 +275,8 @@ def plot_segmentation_performance_report_UAI(y, y_hat,name, threshold=0.5):
     ax_gt_size.hist(gt_lesion_load, bins=20)
     ylims = ax_gt_size.get_ylim()
     mean_performance = np.mean(gt_lesion_load)
-    ax_gt_size.vlines(mean_performance, *ylims, color='red', label=f"{mean_performance:.5f}")
+    std_performance = np.std(gt_lesion_load, ddof=1)
+    ax_gt_size.vlines(mean_performance, *ylims, color='red', label=f"Mean:{mean_performance:.5f}, Std:{std_performance:.5f}")
     ax_gt_size.set_xlabel('Ground truth size')
     ax_gt_size.set_ylabel('Frequency')
     ax_gt_size.legend()
@@ -258,3 +296,43 @@ def plot_segmentation_performance_report_UAI(y, y_hat,name, threshold=0.5):
     fig4.tight_layout()
 
     return fig1, fig2, fig3, fig4, mean_performance
+
+def plot_max_baselines(errors, ax, **kwargs):
+    ax.hlines(np.max(errors), 0, 1, colors='gray', linestyles='dashed', **kwargs)
+
+    coverages, risks, _ = rc_curve_max(-errors, errors, expert=False, ideal=True)
+
+    ax.plot(coverages, risks, linestyle='dashed', c='gray', **kwargs)
+
+    return ax
+
+def plot_rc_max_curve(confidence, errors, label, ax, low_aurc=0, high_aurc=None,
+                  **kwargs):
+    coverages, risks, _ = rc_curve_max(confidence, errors)
+
+    aurc = auc(coverages, risks)
+    aurc -= low_aurc
+    
+    if high_aurc is not None:
+        high_aurc -= low_aurc
+        aurc = aurc / high_aurc
+     
+    ax.plot(coverages, risks, label=f"{label}")
+
+def plot_max_aurc_curves(confidences: dict, errors: np.array, ax):
+    random_aurc = np.max(errors)
+
+    ideal_coverage, ideal_risk, _ = rc_curve_max(-errors, errors, ideal=True)
+    ideal_aurc = auc(ideal_coverage, ideal_risk)
+
+    ax = plot_max_baselines(errors, ax)
+
+    for name, confidence in confidences.items():
+        plot_rc_max_curve(confidence, errors, name, ax)
+
+    ax.set_xlim(0,1)
+    ax.set_ylim(0, ax.get_ylim()[1])
+    ax.grid()
+    ax.legend()
+
+    return ax
